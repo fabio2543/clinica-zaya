@@ -8,6 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+
 # Instalar dependências básicas
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
