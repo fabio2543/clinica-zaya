@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Docker: compose up",
+      "type": "shell",
+      "command": "docker compose up",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Docker: compose up (build)",
+      "type": "shell",
+      "command": "docker compose up --build",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Docker: compose down",
+      "type": "shell",
+      "command": "docker compose down",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Run Streamlit (local Python)",
+      "type": "shell",
+      "command": "streamlit run src/app.py --server.port=8501",
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

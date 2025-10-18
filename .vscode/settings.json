@@ -1,0 +1,21 @@
+{
+  "python.defaultInterpreterPath": "python",
+  "python.analysis.typeCheckingMode": "basic",
+  "editor.formatOnSave": true,
+  "python.formatting.provider": "black",
+  "ruff.enable": true,
+  "ruff.lint.args": [
+    "--select",
+    "E,F,I",
+    "--ignore",
+    "E501"
+  ],
+  "files.exclude": {
+    "**/__pycache__": true,
+    ".ruff_cache": true,
+    ".pytest_cache": true,
+    ".ipynb_checkpoints": true
+  },
+  "terminal.integrated.defaultProfile.windows": "Git Bash",
+  "makefile.configureOnOpen": true
+}

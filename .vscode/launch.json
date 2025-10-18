@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Attach to Streamlit in Docker",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Python: Streamlit (local)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/app.py",
+      "console": "integratedTerminal",
+      "args": [
+        "--server.port=8501"
+      ],
+      "justMyCode": true
+    }
+  ]
+}

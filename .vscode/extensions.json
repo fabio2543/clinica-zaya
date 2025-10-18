@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-toolsai.jupyter",
+    "ms-azuretools.vscode-docker",
+    "streetsidesoftware.code-spell-checker",
+    "charliermarsh.ruff",
+    "ms-vscode.makefile-tools",
+    "ms-toolsai.datawrangler",
+    "github.vscode-pull-request-github"
+  ]
+}

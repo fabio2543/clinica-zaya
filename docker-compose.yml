@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: .
+    container_name: streamlit_app
+
+    env_file:
+      - .env
+
+    environment:
+      STREAMLIT_SERVER_HEADLESS: "true"
+      STREAMLIT_THEME_BASE: "light"
+      ENABLE_DEBUGPY: "0"
+      WAIT_FOR_CLIENT: "0"
+
+    ports:
+      - "${APP_PORT:-8501}:8501"
+
+    volumes:
+      - ./src:/app/src:rw
+      - ./.streamlit:/app/.streamlit:rw
+      - ./:/workspace:rw
+
+    entrypoint: [ "/app/entrypoint.sh" ]

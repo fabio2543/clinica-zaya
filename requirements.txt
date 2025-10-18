@@ -1,0 +1,10 @@
+
+streamlit==1.39.0
+pandas>=2.2
+numpy>=1.26
+openpyxl>=3.1
+python-dotenv>=1.0
+plotly>=5.24
+# Dev tools (optional)
+ruff>=0.6
+black>=24.10
