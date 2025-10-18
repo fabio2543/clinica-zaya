@@ -1,12 +1,8 @@
-
 import streamlit as st
-import pandas as pd
-import plotly.express as px
 
-st.title("📊 Dashboard de Exemplo")
-st.caption("Gráficos interativos com Plotly")
+st.set_page_config(page_title="Dashboard", layout="wide")
+st.title("📊 Dashboard")
 
-df = px.data.gapminder().query("year == 2007")
-fig = px.scatter(df, x="gdpPercap", y="lifeExp", size="pop", color="continent",
-                 hover_name="country", log_x=True, size_max=60)
-st.plotly_chart(fig, use_container_width=True)
+st.info(
+    "Aqui você verá KPIs e gráficos gerais. Em breve conecto aos dados de custos/produtos/procedimentos."
+)
