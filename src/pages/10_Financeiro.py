@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
 from datetime import datetime
 from src.dataio.fixed_costs import (
     read_fixed_costs,
@@ -36,18 +35,21 @@ with tab_fixos:
 
     # -------------------- LISTAGEM --------------------
     df = pd.DataFrame()
-    if buscar:  # Só executa a busca quando clicar no botão
-        df = read_fixed_costs(
+    if buscar:
+        st.session_state["df_fixos"] = read_fixed_costs(
             period=period if period else None,
             category=None if category == "(todas)" else category,
         )
-    if df.empty:
+
+    df = st.session_state.get("df_fixos", pd.DataFrame())
+
+    if df.empty and buscar:
         st.info("Nenhum lançamento encontrado para os filtros atuais.")
-    else:
-        st.caption(f"{len(df)} registros")
-        # seleção múltipla
+    elif not df.empty:
+        st.caption(f"{len(df)} registros encontrados")
         df_view = df.copy()
         df_view["Selecionar"] = False
+
         edited = st.data_editor(
             df_view,
             column_config={
@@ -58,6 +60,7 @@ with tab_fixos:
             num_rows="dynamic",
             key="grid_fixos",
         )
+
         selected_ids = edited.loc[
             edited["Selecionar"] == True, "fixed_cost_id"
         ].tolist()
@@ -70,18 +73,26 @@ with tab_fixos:
                 use_container_width=True,
             ):
                 n = delete_fixed_cost(selected_ids)
-                st.success(
-                    f"Excluídos {n} registro(s). Atualize os filtros para recarregar."
-                )
+
+                # ✅ Atualizar grid na hora
+                if "df_fixos" in st.session_state:
+                    df_local = st.session_state["df_fixos"]
+                    # Remove os IDs excluídos do DataFrame atual
+                    st.session_state["df_fixos"] = df_local[
+                        ~df_local["fixed_cost_id"].isin(selected_ids)
+                    ].reset_index(drop=True)
+
+                st.success(f"🗑️ {n} registro(s) excluído(s) com sucesso.")
+                st.rerun()  # força recarregar a página e redesenhar o grid atualizado
+
         with c2:
             st.button(
                 "✏️ Alterar selecionados (em massa)",
                 disabled=True,
                 use_container_width=True,
-                help="Próximo passo: tela de edição em massa",
             )
+
         with c3:
-            # Exportar resultado do filtro
             if st.button("⬇️ Exportar CSV", use_container_width=True):
                 csv_bytes = df.to_csv(index=False).encode("utf-8")
                 st.download_button(
@@ -90,105 +101,136 @@ with tab_fixos:
                     file_name=f"custos_fixos_{datetime.now():%Y%m%d}.csv",
                     mime="text/csv",
                 )
+
         st.divider()
 
-# -------------------- CADASTRO UNITÁRIO --------------------
-st.markdown("### ➕ Cadastro unitário")
+    # -------------------- CADASTRO UNITÁRIO --------------------
+    st.markdown("### ➕ Cadastro unitário")
 
+    # utilitário para unir sugestões + existentes sem duplicar
+    def _options_with_suggestions(
+        suggestions: list[str], existing: list[str]
+    ) -> list[str]:
+        opts = ["(+ novo)"]
+        seen = set()
+        for x in suggestions + existing:
+            if not x or x in seen:
+                continue
+            seen.add(x)
+            opts.append(x)
+        return opts
 
-# utilitário para unir sugestões + existentes sem duplicar
-def _options_with_suggestions(suggestions: list[str], existing: list[str]) -> list[str]:
-    opts = ["(+ novo)"]
-    seen = set()
-    for x in suggestions + existing:
-        if not x or x in seen:
-            continue
-        seen.add(x)
-        opts.append(x)
-    return opts
-
-
-# montar opções (sugestões + existentes)
-cat_opts = _options_with_suggestions(
-    ["Aluguel", "Energia", "Água", "Internet", "Telefone", "Softwares", "Manutenção"],
-    list_categories(),
-)
-pm_opts = _options_with_suggestions(
-    ["Pix", "Boleto", "Cartão", "TED", "Dinheiro"], list_payment_methods()
-)
-ven_opts = _options_with_suggestions(
-    ["Imobiliária XYZ", "Concessionária de Energia", "Operadora de Internet"],
-    list_vendors(),
-)
-cc_opts = _options_with_suggestions(
-    ["Administrativo", "Recepção", "Sala 1", "Sala 2", "Comercial", "Financeiro"],
-    list_cost_centers(),
-)
-
-with st.form("novo_custo_fixo"):
-    c1, c2, c3 = st.columns(3)
-    f_period = c1.text_input("Competência (AAAA-MM)", placeholder="2025-10")
-    f_date = c2.date_input("Data")
-    f_category_sel = c3.selectbox(
-        "Categoria", cat_opts, index=1 if len(cat_opts) > 1 else 0
+    # montar opções (sugestões + existentes)
+    cat_opts = _options_with_suggestions(
+        [
+            "Aluguel",
+            "Energia",
+            "Água",
+            "Internet",
+            "Telefone",
+            "Softwares",
+            "Manutenção",
+        ],
+        list_categories(),
+    )
+    pm_opts = _options_with_suggestions(
+        ["Pix", "Boleto", "Cartão", "TED", "Dinheiro"], list_payment_methods()
+    )
+    ven_opts = _options_with_suggestions(
+        ["Imobiliária XYZ", "Concessionária de Energia", "Operadora de Internet"],
+        list_vendors(),
+    )
+    cc_opts = _options_with_suggestions(
+        ["Administrativo", "Recepção", "Sala 1", "Sala 2", "Comercial", "Financeiro"],
+        list_cost_centers(),
     )
 
-    description = st.text_input("Descrição", placeholder="Ex.: Aluguel da sala")
-    amount = st.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
+    with st.form("form_novo_custo_fixo"):
+        c1, c2, c3 = st.columns(3)
+        f_period = c1.text_input("Competência (AAAA-MM)", placeholder="2025-10")
+        f_date = c2.date_input("Data")
+        f_category_sel = c3.selectbox(
+            "Categoria", cat_opts, index=1 if len(cat_opts) > 1 else 0
+        )
 
-    c4, c5, c6 = st.columns(3)
-    payment_method_sel = c4.selectbox(
-        "Forma de pagamento", pm_opts, index=1 if len(pm_opts) > 1 else 0
-    )
-    vendor_sel = c5.selectbox(
-        "Fornecedor", ven_opts, index=1 if len(ven_opts) > 1 else 0
-    )
-    cost_center_sel = c6.selectbox(
-        "Centro de custo", cc_opts, index=1 if len(cc_opts) > 1 else 0
-    )
+        description = st.text_input("Descrição", placeholder="Ex.: Aluguel da sala")
+        amount = st.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
 
-    # se usuário escolher "(+ novo)", abre campo para digitar o novo valor
-    def _value_or_new(label: str, selected: str):
-        if selected == "(+ novo)":
-            return st.text_input(f"Novo {label}", key=f"novo_{label}").strip()
-        return selected
+        c4, c5, c6 = st.columns(3)
+        payment_method_sel = c4.selectbox(
+            "Forma de pagamento", pm_opts, index=1 if len(pm_opts) > 1 else 0
+        )
+        vendor_sel = c5.selectbox(
+            "Fornecedor", ven_opts, index=1 if len(ven_opts) > 1 else 0
+        )
+        cost_center_sel = c6.selectbox(
+            "Centro de custo", cc_opts, index=1 if len(cc_opts) > 1 else 0
+        )
 
-    f_category = _value_or_new("Categoria", f_category_sel)
-    payment_method = _value_or_new("Forma de pagamento", payment_method_sel)
-    vendor = _value_or_new("Fornecedor", vendor_sel)
-    cost_center = _value_or_new("Centro de custo", cost_center_sel)
+        def _value_or_new(label: str, selected: str):
+            if selected == "(+ novo)":
+                return st.text_input(f"Novo {label}", key=f"novo_{label}").strip()
+            return selected
 
-    recurrence = st.text_input("Recorrência", placeholder="mensal/anual/único")
-    due_day = st.number_input("Dia de vencimento", min_value=1, max_value=31, step=1)
-    notes = st.text_input("Observações", placeholder="")
+        f_category = _value_or_new("Categoria", f_category_sel)
+        payment_method = _value_or_new("Forma de pagamento", payment_method_sel)
+        vendor = _value_or_new("Fornecedor", vendor_sel)
+        cost_center = _value_or_new("Centro de custo", cost_center_sel)
 
-    submit = st.form_submit_button("Salvar")
+        # Combo de recorrência
+        recurrence_options = [
+            "Único",
+            "Semanal",
+            "Quinzenal",
+            "Mensal",
+            "Bimestral",
+            "Trimestral",
+            "Semestral",
+            "Anual",
+        ]
+        recurrence = st.selectbox(
+            "Recorrência",
+            recurrence_options,
+            index=3,  # deixa "Mensal" como padrão
+            help="Selecione a frequência com que o custo se repete.",
+        )
 
-    if submit:
-        if not f_period or not description or amount <= 0:
-            st.error("Preencha pelo menos: **Competência, Descrição e Valor**.")
-        else:
-            row = {
-                "period": f_period,
-                "date": f_date.isoformat(),
-                "description": description,
-                "category": f_category,
-                "amount": amount,
-                "payment_method": payment_method,
-                "vendor": vendor,
-                "recurrence": recurrence,
-                "due_day": int(due_day),
-                "cost_center": cost_center,
-                "invoice_number": None,
-                "notes": notes,
-            }
-            res = create_fixed_cost(row)
-            st.success(
-                f"Registro gravado. Inseridos: {res.get('inserted', 0)}, "
-                f"Atualizados: {res.get('updated', 0)}"
-            )
-    # -------------------- IMPORTAÇÃO MASSIVA --------------------
+        due_day = st.number_input(
+            "Dia de vencimento", min_value=1, max_value=31, step=1
+        )
+        notes = st.text_input("Observações", placeholder="")
+
+        submit = st.form_submit_button("Salvar")
+
+        if submit:
+            if not f_period or not description or amount <= 0:
+                st.error("Preencha pelo menos: **Competência, Descrição e Valor**.")
+            else:
+                row = {
+                    "period": f_period,
+                    "date": f_date.isoformat(),
+                    "description": description,
+                    "category": f_category,
+                    "amount": amount,
+                    "payment_method": payment_method,
+                    "vendor": vendor,
+                    "recurrence": recurrence,
+                    "due_day": int(due_day),
+                    "cost_center": cost_center,
+                    "invoice_number": None,
+                    "notes": notes,
+                }
+                res = create_fixed_cost(row)
+                st.success(
+                    f"Registro gravado. Inseridos: {res.get('inserted', 0)}, "
+                    f"Atualizados: {res.get('updated', 0)}"
+                )
+
+    st.divider()
+
+    # -------------------- TEMPLATE (fora de form) --------------------
     st.markdown("### 📥 Importação (CSV/XLSX) + Template")
+
     sample = pd.DataFrame(
         [
             {
@@ -207,15 +249,19 @@ with st.form("novo_custo_fixo"):
             }
         ]
     )
+
+    template_csv = sample.to_csv(index=False).encode("utf-8")
     st.download_button(
         "⬇️ Baixar template (CSV)",
-        data=sample.to_csv(index=False).encode("utf-8"),
+        data=template_csv,
         file_name="template_custos_fixos.csv",
         mime="text/csv",
+        help="Baixe o layout padrão para carga de custos fixos.",
     )
 
+    st.markdown("### 🚚 Carga de arquivo")
     up = st.file_uploader(
-        "Envie CSV/XLS/XLSX no layout padrão", type=["csv", "xls", "xlsx"]
+        "Envie CSV/XLSX no layout padrão", type=["csv", "xls", "xlsx"]
     )
     if up:
         try:
@@ -227,11 +273,12 @@ with st.form("novo_custo_fixo"):
             st.write("Prévia do arquivo:")
             st.dataframe(raw.head(50), use_container_width=True)
 
-            # validação mínima
             required = {"period", "date", "description", "category", "amount"}
-            missing = required - set(map(str.lower, raw.columns))
+            norm_cols = {c.strip().lower() for c in raw.columns}
+            missing = required - norm_cols
+
             if missing:
-                st.error(f"Colunas obrigatórias ausentes: {', '.join(missing)}")
+                st.error(f"Colunas obrigatórias ausentes: {', '.join(sorted(missing))}")
             else:
                 if st.button("Carregar arquivo", type="primary"):
                     res = upsert_fixed_costs(raw)
@@ -240,3 +287,48 @@ with st.form("novo_custo_fixo"):
                     )
         except Exception as e:
             st.error(f"Erro ao processar arquivo: {e}")
+
+    st.divider()
+    st.markdown("### ⚙️ Gerenciar Combos (Dimensões)")
+
+    dim_map = {
+        "Categoria": ("category", list_categories),
+        "Fornecedor": ("vendor", list_vendors),
+        "Centro de Custo": ("cost_center", list_cost_centers),
+        "Forma de Pagamento": ("payment_method", list_payment_methods),
+    }
+
+    col1, col2, col3 = st.columns([1, 1, 0.8])
+    dim_label = col1.selectbox("Selecione a dimensão", list(dim_map.keys()))
+    dim_name, list_func = dim_map[dim_label]
+
+    items = list_func()
+    selected_item = col2.selectbox("Item", items if items else ["(nenhum disponível)"])
+
+    action = col3.radio(
+        "Ação", ["Desativa", "Reativar"], horizontal=True, key=f"radio_{dim_name}"
+    )
+
+    if st.button("🗑️ Executar ação", type="primary", use_container_width=True):
+        try:
+            from src.dataio.fixed_costs import pd, DIM_DIR, utc_now
+
+            path = DIM_DIR / f"dim_{dim_name}.parquet"
+            df = pd.read_parquet(path)
+            code_col = f"{dim_name}_code"
+            is_active_col = "is_active"
+
+            # Encontrar registro (case-insensitive)
+            mask = (
+                df[code_col].astype(str).str.lower()
+                == str(selected_item).lower().strip()
+            )
+            if not mask.any():
+                st.warning(f"Item '{selected_item}' não encontrado.")
+            else:
+                df.loc[mask, is_active_col] = True if action == "Reativar" else False
+                df.loc[mask, "updated_at"] = utc_now()
+                df.to_parquet(path, index=False)
+                st.success(f"Item '{selected_item}' {action.lower()}do com sucesso!")
+        except Exception as e:
+            st.error(f"Erro ao processar: {e}")

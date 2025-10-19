@@ -8,6 +8,8 @@ from src.utils.helpers import (
     normalize_text,
     utc_now,
 )
+from pathlib import Path
+import pandas as pd
 
 # Caminhos principais de armazenamento
 DATA = Path("data")
@@ -79,28 +81,73 @@ def list_categories() -> list[str]:
     p = DIM_DIR / "dim_category.parquet"
     if not p.exists():
         return []
-    return pd.read_parquet(p)["category_name"].dropna().sort_values().tolist()
-
-
-def list_cost_centers() -> list[str]:
-    p = DIM_DIR / "dim_cost_center.parquet"
-    if not p.exists():
-        return []
-    return pd.read_parquet(p)["cost_center_name"].dropna().sort_values().tolist()
-
-
-def list_payment_methods() -> list[str]:
-    p = DIM_DIR / "dim_payment_method.parquet"
-    if not p.exists():
-        return []
-    return pd.read_parquet(p)["payment_method_name"].dropna().sort_values().tolist()
+    df = pd.read_parquet(p)
+    # ✅ Apenas registros ativos
+    df = df[df.get("is_active", True)]
+    return (
+        df["category_name"]
+        .dropna()
+        .map(str)
+        .map(str.strip)
+        .str.capitalize()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
 
 
 def list_vendors() -> list[str]:
     p = DIM_DIR / "dim_vendor.parquet"
     if not p.exists():
         return []
-    return pd.read_parquet(p)["vendor_name"].dropna().sort_values().tolist()
+    df = pd.read_parquet(p)
+    df = df[df.get("is_active", True)]  # ✅
+    return (
+        df["vendor_name"]
+        .dropna()
+        .map(str)
+        .map(str.strip)
+        .str.capitalize()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
+
+
+def list_cost_centers() -> list[str]:
+    p = DIM_DIR / "dim_cost_center.parquet"
+    if not p.exists():
+        return []
+    df = pd.read_parquet(p)
+    df = df[df.get("is_active", True)]  # ✅
+    return (
+        df["cost_center_name"]
+        .dropna()
+        .map(str)
+        .map(str.strip)
+        .str.capitalize()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
+
+
+def list_payment_methods() -> list[str]:
+    p = DIM_DIR / "dim_payment_method.parquet"
+    if not p.exists():
+        return []
+    df = pd.read_parquet(p)
+    df = df[df.get("is_active", True)]  # ✅
+    return (
+        df["payment_method_name"]
+        .dropna()
+        .map(str)
+        .map(str.strip)
+        .str.capitalize()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
 
 
 # --- leitura com joins nas dimensões ---
@@ -220,8 +267,6 @@ def get_or_create_dim_value(dim_name: str, value: str):
     """
     Cria ou recupera o ID da dimensão (category, vendor, cost_center, payment_method)
     """
-    from pathlib import Path
-    import pandas as pd
 
     id_col = f"{dim_name}_id"
     code_col = f"{dim_name}_code"
@@ -304,9 +349,15 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
                 fact.loc[idx, "amount"] = float(row["amount"])
                 fact.loc[idx, "description"] = row["description"]
                 fact.loc[idx, "updated_at"] = utc_now()
-                fact.loc[idx, "version"] = fact.loc[idx, "version"].apply(
-                    lambda x: (x if pd.notna(x) else 1) + 1
-                )
+
+                # versão segura do incremento de version
+                current_version = fact.loc[idx, "version"]
+                try:
+                    fact.loc[idx, "version"] = (
+                        int(current_version) if pd.notna(current_version) else 1
+                    ) + 1
+                except Exception:
+                    fact.loc[idx, "version"] = 2
 
                 results["updated"] += 1
             else:
@@ -347,3 +398,44 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
             results["errors"] += 1
 
     return results
+
+
+# -------------------- Limpeza de duplicatas -------------------- #
+def clean_duplicates_in_dims():
+    """
+    Remove duplicatas das tabelas dimensionais (dim_category, dim_vendor, etc.)
+    garantindo que 'Pix', 'pix', 'PIX' sejam considerados o mesmo valor.
+    """
+    import pandas as pd
+    from pathlib import Path
+
+    base = Path("data") / "silver"
+
+    for dim in ["category", "vendor", "cost_center", "payment_method"]:
+        path = base / f"dim_{dim}.parquet"
+        if not path.exists():
+            print(f"⚠️ Dimensão {dim} não encontrada, ignorando.")
+            continue
+
+        df = pd.read_parquet(path)
+        name_col = f"{dim}_name"
+        code_col = f"{dim}_code"
+        id_col = f"{dim}_id"
+
+        if name_col not in df.columns or code_col not in df.columns:
+            print(f"⚠️ Estrutura inesperada em {dim}, ignorando.")
+            continue
+
+        # Normalizar e limpar duplicatas (sem distinção de maiúsculas/minúsculas)
+        df[name_col] = df[name_col].astype(str).str.strip()
+        df[code_col] = df[code_col].astype(str).str.strip().str.lower()
+
+        # Escolher a primeira ocorrência (mantendo formatação original do nome)
+        df = df.sort_values(by=[code_col, id_col])
+        df = df.drop_duplicates(subset=[code_col], keep="first")
+
+        # Atualizar os nomes (capitalize para visual padrão)
+        df[name_col] = df[name_col].str.strip().str.capitalize()
+
+        df.to_parquet(path, index=False)
+        print(f"✔ Limpeza concluída: {dim} ({len(df)} registros únicos)")
