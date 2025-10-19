@@ -14,13 +14,11 @@ from src.dataio.fixed_costs import (
 
 st.set_page_config(page_title="Módulo Financeiro", layout="wide")
 st.title("💰 Módulo Financeiro")
-st.caption("Central financeiro: Custos Fixos, Produtos e Procedimentos.")
+st.caption("Central financeiro com submenus.")
 
-tab_fixos, tab_produtos, tab_proced = st.tabs(
-    ["🧾 Custos Fixos", "🧪 Produtos", "🧮 Procedimentos"]
-)
+submenu = st.sidebar.radio("Seção", ["🧾 Custos Fixos", "🧪 Produtos", "🧮 Procedimentos"], key="finance_section")
 
-with tab_fixos:
+if submenu == "🧾 Custos Fixos":
     st.subheader("🧾 Custos Fixos")
 
     # -------------------- FILTROS --------------------
