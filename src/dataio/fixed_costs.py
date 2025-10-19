@@ -1,15 +1,13 @@
 # --- novas utilidades ---
 from pathlib import Path
 import pandas as pd
-from datetime import datetime
 from src.utils.helpers import (
     generate_uuid,
     generate_record_key,
     normalize_text,
     utc_now,
 )
-from pathlib import Path
-import pandas as pd
+
 
 # Caminhos principais de armazenamento
 DATA = Path("data")
@@ -164,7 +162,7 @@ def read_fixed_costs(
     if not frames:
         return pd.DataFrame()
     fact = pd.concat(frames, ignore_index=True)
-    fact = fact[fact["is_deleted"] != True] if "is_deleted" in fact.columns else fact
+    fact = fact[~fact["is_deleted"]] if "is_deleted" in fact.columns else fact
 
     # carregar dims
     def _dim(name):

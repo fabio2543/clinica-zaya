@@ -61,9 +61,7 @@ with tab_fixos:
             key="grid_fixos",
         )
 
-        selected_ids = edited.loc[
-            edited["Selecionar"] == True, "fixed_cost_id"
-        ].tolist()
+        selected_ids = edited.loc[edited["Selecionar"], "fixed_cost_id"].tolist()
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
