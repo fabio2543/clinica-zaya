@@ -16,7 +16,11 @@ st.set_page_config(page_title="Módulo Financeiro", layout="wide")
 st.title("💰 Módulo Financeiro")
 st.caption("Central financeiro com submenus.")
 
-submenu = st.sidebar.radio("Seção", ["🧾 Custos Fixos", "🧪 Produtos", "🧮 Procedimentos"], key="finance_section")
+submenu = st.sidebar.radio(
+    "Seção",
+    ["🧾 Custos Fixos", "🧪 Produtos", "🧮 Procedimentos"],
+    key="finance_section",
+)
 
 if submenu == "🧾 Custos Fixos":
     st.subheader("🧾 Custos Fixos")

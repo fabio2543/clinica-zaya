@@ -21,13 +21,6 @@ with col2:
     st.write("Painéis com KPIs e análises financeiras.")
     st.page_link("pages/20_Relatorios.py", label="Abrir módulo Relatórios →", icon="➡️")
 
-with col3:
-    st.markdown("### ⚙️ Configurações")
-    st.write("Parâmetros do sistema, categorias e preferências.")
-    st.page_link(
-        "pages/30_Configuracoes.py", label="Abrir módulo Configurações →", icon="➡️"
-    )
-
 st.markdown("---")
 st.info(
     "💡 Use o menu lateral para navegar. A pasta **`data/`** guarda seus arquivos locais."
