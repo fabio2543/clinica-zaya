@@ -4,12 +4,19 @@ from datetime import date
 from pathlib import Path
 import inspect
 
+# =============================================================================
+# IMPORTS DO DATA LAYER (PRINCIPAIS)
+# =============================================================================
 from src.dataio.products import (
     upsert_products,
     create_product_purchase,
     delete_product_purchase,
 )
 
+# =============================================================================
+# FALLBACKS (para funções que podem não existir no módulo products.py)
+# =============================================================================
+# --- list_categories ---
 try:
     from src.dataio.products import list_categories as list_categories_pd
 except (ImportError, AttributeError):
@@ -28,6 +35,7 @@ except (ImportError, AttributeError):
         return ["produto"]
 
 
+# --- list_vendors ---
 try:
     from src.dataio.products import list_vendors as list_vendors_pd
 except (ImportError, AttributeError):
@@ -53,6 +61,7 @@ except (ImportError, AttributeError):
         return []
 
 
+# --- read_products ---
 try:
     from src.dataio.products import read_products
 except (ImportError, AttributeError):
@@ -67,6 +76,41 @@ except (ImportError, AttributeError):
         return pd.DataFrame()
 
 
+# =============================================================================
+# HELPERS
+# =============================================================================
+def _ensure_flag(df, col: str, default: bool = False):
+    """Garante que a coluna booleana exista e esteja normalizada."""
+    if df is None or df.empty:
+        return df
+    if col not in df.columns:
+        df[col] = default
+    else:
+        df[col] = df[col].fillna(False).astype(bool)
+    return df
+
+
+def _pick_first_col(
+    df: pd.DataFrame, candidates: list[str] | tuple[str, ...]
+) -> str | None:
+    """Retorna a primeira coluna existente dentre as candidatas."""
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
+
+
+def _get_value(row: pd.Series, candidates: list[str] | tuple[str, ...], default=None):
+    """Pega o primeiro valor existente em `row` dado um conjunto de nomes de coluna."""
+    for c in candidates:
+        if c in row.index and pd.notna(row[c]):
+            return row[c]
+    return default
+
+
+# =============================================================================
+# ADAPTERS (compatibilidade de assinatura do data layer)
+# =============================================================================
 def _call_create_product_purchase_adapter(
     *,
     nome: str,
@@ -77,13 +121,12 @@ def _call_create_product_purchase_adapter(
     data_compra,
 ):
     """
-    Se create_product_purchase aceitar apenas `row`, montamos o payload completo em PT+EN.
+    Suporta tanto `row` quanto kwargs. Monta payload PT+EN.
     """
-
     sig = inspect.signature(create_product_purchase)
     allowed = set(sig.parameters.keys())
 
-    # Payload "row" com chaves em PT e EN para máxima compatibilidade
+    # Payload "row" completo, com chaves PT e EN
     row_payload = {
         # Identificação
         "nome": nome,
@@ -101,6 +144,7 @@ def _call_create_product_purchase_adapter(
         "valor_compra": valor_compra,
         "purchase_price": valor_compra,
         "unit_cost": valor_compra,
+        "unit_price": valor_compra,
         "cost": valor_compra,
         "price": valor_compra,
         # Quantidade
@@ -117,83 +161,7 @@ def _call_create_product_purchase_adapter(
     if "row" in allowed:
         return create_product_purchase(row=row_payload)
 
-    # fallback: se não tiver `row`, tenta mapear por kwargs individuais (caso exista outro formato)
-    candidates = {
-        "name": nome,
-        "product_name": nome,
-        "title": nome,
-        "category": categoria,
-        "vendor": fornecedor,
-        "supplier": fornecedor,
-        "purchase_price": valor_compra,
-        "unit_cost": valor_compra,
-        "cost": valor_compra,
-        "price": valor_compra,
-        "quantity": quantidade,
-        "qty": quantidade,
-        "purchase_date": data_compra,
-        "date": data_compra,
-        "dt": data_compra,
-    }
-    payload = {k: v for k, v in candidates.items() if k in allowed}
-    if not payload:
-        raise TypeError(
-            f"create_product_purchase sem match. Aceitos: {sorted(allowed)}"
-        )
-    return create_product_purchase(**payload)
-
-
-def _call_create_product_purchase_adapter(
-    *,
-    nome: str,
-    categoria: str,
-    fornecedor: str,
-    valor_compra: float,
-    quantidade: float,
-    data_compra,
-):
-    """
-    Se create_product_purchase aceitar apenas `row`, montamos o payload completo em PT+EN.
-    """
-
-    sig = inspect.signature(create_product_purchase)
-    allowed = set(sig.parameters.keys())
-
-    # Payload "row" com chaves em PT e EN para máxima compatibilidade
-    row_payload = {
-        # Identificação
-        "nome": nome,
-        "name": nome,
-        "product_name": nome,
-        "title": nome,
-        # Categoria
-        "categoria": categoria,
-        "category": categoria,
-        # Fornecedor
-        "fornecedor": fornecedor,
-        "vendor": fornecedor,
-        "supplier": fornecedor,
-        # Preço / custo
-        "valor_compra": valor_compra,
-        "purchase_price": valor_compra,
-        "unit_cost": valor_compra,
-        "cost": valor_compra,
-        "price": valor_compra,
-        # Quantidade
-        "quantidade": quantidade,
-        "quantity": quantidade,
-        "qty": quantidade,
-        # Datas
-        "data_compra": str(data_compra),
-        "purchase_date": str(data_compra),
-        "date": str(data_compra),
-        "dt": str(data_compra),
-    }
-
-    if "row" in allowed:
-        return create_product_purchase(row=row_payload)
-
-    # fallback: se não tiver `row`, tenta mapear por kwargs individuais (caso exista outro formato)
+    # fallback: kwargs individuais
     candidates = {
         "name": nome,
         "product_name": nome,
@@ -221,9 +189,8 @@ def _call_create_product_purchase_adapter(
 
 def _call_upsert_products_adapter(*, id, nome, categoria, valor_compra, quantidade):
     """
-    Suporta tanto `row` quanto kwargs. Usa PT+EN no payload.
+    Suporta tanto `row` quanto kwargs. Monta payload PT+EN.
     """
-
     sig = inspect.signature(upsert_products)
     allowed = set(sig.parameters.keys())
 
@@ -263,6 +230,53 @@ def _call_upsert_products_adapter(*, id, nome, categoria, valor_compra, quantida
     return upsert_products(**payload)
 
 
+def _call_delete_product_purchase_adapter(row) -> None:
+    """
+    Deleção resiliente:
+    - Detecta a coluna correta de ID
+    - Normaliza para lista (ids)
+    - Chama delete_product_purchase com ids/id/row conforme assinatura
+    """
+    # linha como dict
+    if isinstance(row, pd.Series):
+        r = row.to_dict()
+    elif isinstance(row, dict):
+        r = row
+    else:
+        r = {}
+
+    # descobrir a coluna de id
+    id_value = None
+    for c in ["product_purchase_id", "id", "purchase_id"]:
+        if c in r and pd.notna(r[c]):
+            id_value = r[c]
+            break
+
+    # normalizar para lista de strings
+    ids = []
+    if isinstance(id_value, (list, tuple, set)):
+        ids = [str(x) for x in id_value if pd.notna(x)]
+    elif id_value is not None and id_value != "":
+        ids = [str(id_value)]
+
+    # assinatura da função
+    sig = inspect.signature(delete_product_purchase)
+    allowed = set(sig.parameters.keys())
+
+    if "ids" in allowed:
+        return delete_product_purchase(ids=ids)
+    if "id" in allowed:
+        return delete_product_purchase(id=ids[0] if ids else None)
+    if "row" in allowed:
+        return delete_product_purchase(row=r)
+
+    # fallback: tentar posicional com lista
+    return delete_product_purchase(ids)
+
+
+# =============================================================================
+# UI
+# =============================================================================
 st.set_page_config(page_title="Produtos | Zaya", layout="wide")
 st.title("🧪 Produtos (Compras/Entradas)")
 
@@ -272,20 +286,30 @@ menu = st.radio(
     horizontal=True,
 )
 
+# carregar dataset
 df = read_products(None)
-if df.empty:
+if df is None or df.empty:
     st.warning("Nenhum produto encontrado ainda. Faça um cadastro.")
     df = pd.DataFrame(
         columns=["id", "nome", "categoria", "valor_compra", "quantidade", "is_deleted"]
     )
 
+# normalizar flag
+df = _ensure_flag(df, "is_deleted", False)
+
+# =============================================================================
+# VISUALIZAÇÃO
+# =============================================================================
 if menu == "Visualizar":
     st.subheader("📦 Catálogo de Produtos / Insumos")
     hide_deleted = st.checkbox("Ocultar itens excluídos", value=True)
-    if hide_deleted and "is_deleted" in df.columns:
-        df = df[~df["is_deleted"].fillna(False)]
+    if hide_deleted:
+        df = df[~df["is_deleted"]].copy()
     st.dataframe(df, use_container_width=True, hide_index=True)
 
+# =============================================================================
+# CADASTRO
+# =============================================================================
 elif menu == "Cadastro":
     st.subheader("🆕 Novo Produto / Insumo")
     col1, col2, col3 = st.columns(3)
@@ -305,55 +329,154 @@ elif menu == "Cadastro":
         if not nome:
             st.error("Informe o nome do produto.")
         else:
-            _call_create_product_purchase_adapter(
-                nome=nome,
-                categoria=categoria,
-                fornecedor=fornecedor,
-                valor_compra=valor_compra,
-                quantidade=quantidade,
-                data_compra=data_compra,
-            )
-            st.success(f"Produto '{nome}' cadastrado com sucesso.")
-            st.experimental_rerun()
+            try:
+                _call_create_product_purchase_adapter(
+                    nome=str(nome).strip(),
+                    categoria=str(categoria).strip(),
+                    fornecedor=str(fornecedor).strip(),
+                    valor_compra=float(valor_compra or 0.0),
+                    quantidade=float(quantidade or 0.0),
+                    data_compra=(
+                        data_compra.isoformat()
+                        if hasattr(data_compra, "isoformat")
+                        else str(data_compra)
+                    ),
+                )
+                st.toast(f"Produto '{nome}' cadastrado.", icon="✅")
+                st.success(f"Produto '{nome}' cadastrado com sucesso.")
+            except Exception as e:
+                st.error("Erro ao salvar o produto.")
+                st.exception(e)
 
+# =============================================================================
+# ATUALIZAÇÃO
+# =============================================================================
 elif menu == "Atualização":
     st.subheader("✏️ Atualizar produto existente")
-    base = df[~df["is_deleted"].fillna(False)].copy()
+    base = df[~df["is_deleted"]].copy()
     if base.empty:
         st.info("Não há produtos para atualizar.")
     else:
-        selecionado = st.selectbox("Selecione o produto", base["nome"].tolist())
-        linha = base[base["nome"] == selecionado].iloc[0]
+        # escolher coluna de exibição dinamicamente
+        name_col = _pick_first_col(base, ["nome", "name", "product_name", "title"])
+        if not name_col:
+            label_col = "__label__"
+            if "id" in base.columns:
+                base[label_col] = base["id"].astype(str)
+            else:
+                base[label_col] = base.index.astype(str)
+        else:
+            label_col = name_col
 
-        nome = st.text_input("Nome do produto", linha.get("nome", ""))
-        categoria = st.selectbox("Categoria", list_categories_pd(), index=0)
+        opcoes = base[label_col].astype(str).tolist()
+        selecionado = st.selectbox("Selecione o produto", opcoes)
+        linha = base.loc[base[label_col].astype(str) == str(selecionado)].iloc[0]
+
+        # detectar colunas
+        cat_col = _pick_first_col(base, ["categoria", "category"])
+        price_cols = ["valor_compra", "purchase_price", "unit_cost", "cost", "price"]
+        qty_cols = ["quantidade", "quantity", "qty"]
+
+        # valores padrão (respeitando esquema atual)
+        nome_padrao = _get_value(linha, [name_col] if name_col else [], "")
+        categoria_padrao = _get_value(linha, [cat_col] if cat_col else [], "")
+
+        preco_padrao = _get_value(linha, price_cols, 0.0)
+        try:
+            preco_padrao = float(preco_padrao or 0.0)
+        except Exception:
+            preco_padrao = 0.0
+
+        qtd_padrao = _get_value(linha, qty_cols, 0.0)
+        try:
+            qtd_padrao = float(qtd_padrao or 0.0)
+        except Exception:
+            qtd_padrao = 0.0
+
+        # UI com defaults corretos
+        nome = st.text_input("Nome do produto", str(nome_padrao))
+
+        categorias_opts = list_categories_pd()
+        idx_cat = 0
+        if categoria_padrao and categoria_padrao in categorias_opts:
+            idx_cat = categorias_opts.index(categoria_padrao)
+        categoria = st.selectbox("Categoria", categorias_opts, index=idx_cat)
+
         valor_compra = st.number_input(
-            "Valor de compra (R$)", value=float(linha.get("valor_compra", 0.0))
+            "Valor de compra (R$)", value=preco_padrao, step=0.01, min_value=0.0
         )
         quantidade = st.number_input(
-            "Quantidade", value=float(linha.get("quantidade", 0.0))
+            "Quantidade", value=qtd_padrao, step=1.0, min_value=0.0
         )
 
-        if st.button("Salvar alterações", type="primary", use_container_width=True):
-            _call_upsert_products_adapter(
-                id=linha.get("id"),
-                nome=nome,
-                categoria=categoria,
-                valor_compra=valor_compra,
-                quantidade=quantidade,
-            )
-            st.success("Produto atualizado com sucesso.")
-            st.experimental_rerun()
+        col_u, col_d = st.columns(2)
+        with col_u:
+            if st.button("Salvar alterações", type="primary", use_container_width=True):
+                try:
+                    _call_upsert_products_adapter(
+                        id=linha.get("id"),
+                        nome=str(nome).strip(),
+                        categoria=str(categoria).strip(),
+                        valor_compra=float(valor_compra or 0.0),
+                        quantidade=float(quantidade or 0.0),
+                    )
+                    exibido = str(nome).strip() or str(selecionado)
+                    st.toast("Alterações salvas.", icon="✅")
+                    st.success(f"Produto '{exibido}' atualizado com sucesso.")
+                except Exception as e:
+                    st.error("Erro ao atualizar o produto.")
+                    st.exception(e)
 
+        with col_d:
+            if st.button("Excluir este produto", use_container_width=True):
+                try:
+                    _call_delete_product_purchase_adapter(linha)
+                    exibido = (
+                        str(linha.get(name_col, selecionado))
+                        if name_col
+                        else str(selecionado)
+                    )
+                    st.toast("Produto excluído (soft delete).", icon="🗑️")
+                    st.success(
+                        f"Produto '{exibido}' excluído com sucesso (soft delete)."
+                    )
+                except Exception as e:
+                    st.error("Erro ao excluir o produto.")
+                    st.exception(e)
+
+# =============================================================================
+# EXCLUSÃO
+# =============================================================================
 elif menu == "Exclusão":
     st.subheader("🗑️ Exclusão (soft delete)")
-    base = df[~df["is_deleted"].fillna(False)].copy()
+    base = df[~df["is_deleted"]].copy()
     if base.empty:
         st.info("Não há produtos para excluir.")
     else:
-        selecionado = st.selectbox("Selecione o produto", base["nome"].tolist())
-        linha = base[base["nome"] == selecionado].iloc[0]
+        name_col = _pick_first_col(base, ["nome", "name", "product_name", "title"])
+        if not name_col:
+            label_col = "__label__"
+            if "id" in base.columns:
+                base[label_col] = base["id"].astype(str)
+            else:
+                base[label_col] = base.index.astype(str)
+        else:
+            label_col = name_col
+
+        opcoes = base[label_col].astype(str).tolist()
+        selecionado = st.selectbox("Selecione o produto", opcoes)
+        linha = base.loc[base[label_col].astype(str) == str(selecionado)].iloc[0]
+
         if st.button("Excluir produto", type="primary", use_container_width=True):
-            delete_product_purchase(linha.get("id"))
-            st.success("Produto excluído com sucesso (soft delete).")
-            st.experimental_rerun()
+            try:
+                _call_delete_product_purchase_adapter(linha)
+                exibido = (
+                    str(linha.get(name_col, selecionado))
+                    if name_col
+                    else str(selecionado)
+                )
+                st.toast("Produto excluído (soft delete).", icon="🗑️")
+                st.success(f"Produto '{exibido}' excluído com sucesso (soft delete).")
+            except Exception as e:
+                st.error("Erro ao excluir o produto.")
+                st.exception(e)
