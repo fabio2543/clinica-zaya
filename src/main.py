@@ -14,7 +14,10 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown("### 💰 Financeiro")
     st.write("Custos fixos, produtos e procedimentos em um único módulo.")
-    st.page_link("pages/10_Financeiro.py", label="Abrir módulo Financeiro →", icon="➡️")
+    st.page_link(
+        "pages/05_Financeiro.py", label="Abrir Workflow Financeiro →", icon="💼"
+    )
+
 
 with col2:
     st.markdown("### 📊 Relatórios")
