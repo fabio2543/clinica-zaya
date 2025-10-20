@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps (project + dev)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff black
+
+      - name: Ruff (lint)
+        run: ruff check src
+
+      - name: Black (format check)
+        run: black --check src
+
+      - name: Docker build
+        run: docker build -t clinica-zaya/app:ci .
