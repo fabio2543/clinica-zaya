@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim
+ARG BASE_IMAGE=python:3.11.9-slim
+FROM ${BASE_IMAGE}
 
 # Evita cache e melhora logs
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -7,6 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
+
+ENV PYTHONPATH="${PYTHONPATH}:/app"
 
 # Instalar dependências básicas
 RUN apt-get update && apt-get install -y --no-install-recommends \

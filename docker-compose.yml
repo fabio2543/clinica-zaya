@@ -11,7 +11,11 @@ services:
       APP_ENTRY: "src/main.py"
     ports:
       - "${APP_PORT:-8501}:8501"
+
     volumes:
       - ./src:/app/src:rw
       - ./.streamlit:/app/.streamlit:rw
-      - ./data:/app/data:rw
+      - data_zaya:/app/data # 🔥 volume persistente
+volumes:
+  data_zaya:
+    driver: local
