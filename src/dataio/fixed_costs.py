@@ -264,7 +264,6 @@ def delete_fixed_cost(ids: list[str]) -> int:
     return count
 
 
-
 def get_or_create_dim_value(dim_name: str, value: str):
     """
     Cria ou recupera o ID da dimensão (category, vendor, cost_center, payment_method)
@@ -317,7 +316,6 @@ def get_or_create_dim_value(dim_name: str, value: str):
     return int(new_id)
 
 
-
 def upsert_fixed_costs(df: pd.DataFrame) -> dict:
     """
     Recebe DataFrame normalizado e aplica insert/update (upsert) em fact_fixed_cost.
@@ -353,7 +351,9 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
 
     # Coerções seguras
     # amount
-    df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0).astype(float)
+    df["amount"] = (
+        pd.to_numeric(df["amount"], errors="coerce").fillna(0.0).astype(float)
+    )
     # date
     df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date.astype("string")
     # period (AAAA-MM): vamos validar string e extrair ano/mês
@@ -366,7 +366,16 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
         df["due_day"] = pd.Series([pd.NA] * len(df), dtype="Int64")
 
     # Campos texto
-    for col in ["description", "category", "payment_method", "vendor", "cost_center", "recurrence", "invoice_number", "notes"]:
+    for col in [
+        "description",
+        "category",
+        "payment_method",
+        "vendor",
+        "cost_center",
+        "recurrence",
+        "invoice_number",
+        "notes",
+    ]:
         if col in df.columns:
             df[col] = df[col].fillna("").astype(str).str.strip()
         else:
@@ -376,7 +385,9 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
         try:
             # Validações mínimas
             if not row["period"] or len(row["period"]) < 7 or row["period"][4] != "-":
-                raise ValueError(f"period inválido: '{row['period']}' (esperado AAAA-MM)")
+                raise ValueError(
+                    f"period inválido: '{row['period']}' (esperado AAAA-MM)"
+                )
             if not row["description"] or row["amount"] is None:
                 raise ValueError("description/amount obrigatórios ausentes")
             if not row["date"] or str(row["date"]).lower() in ["nat", "nan"]:
@@ -387,14 +398,18 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
                 year = int(row["period"][:4])
                 month = int(row["period"][5:7])
             except Exception:
-                raise ValueError(f"period inválido: '{row['period']}' (esperado AAAA-MM)")
+                raise ValueError(
+                    f"period inválido: '{row['period']}' (esperado AAAA-MM)"
+                )
 
             part_dir = FACT_DIR / f"year={year}" / f"month={month:02d}"
             part_dir.mkdir(parents=True, exist_ok=True)
             part_file = part_dir / "data.parquet"
 
             # normaliza date
-            date_iso = pd.to_datetime(str(row["date"]), errors="raise").date().isoformat()
+            date_iso = (
+                pd.to_datetime(str(row["date"]), errors="raise").date().isoformat()
+            )
 
             rk = generate_record_key(
                 row["period"],
@@ -406,27 +421,51 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
 
             fact = pd.read_parquet(part_file) if part_file.exists() else pd.DataFrame()
 
-            if (not fact.empty) and ("record_key" in fact.columns) and (rk in fact["record_key"].astype(str).values):
+            if (
+                (not fact.empty)
+                and ("record_key" in fact.columns)
+                and (rk in fact["record_key"].astype(str).values)
+            ):
                 # update
                 idx = fact.index[fact["record_key"].astype(str) == rk][0]
+
                 def _set(col, val):
                     if col in fact.columns:
                         fact.loc[idx, col] = val
+
                 _set("description", row.get("description"))
                 _set("amount", float(row.get("amount", 0) or 0))
                 _set("invoice_number", row.get("invoice_number"))
                 _set("notes", row.get("notes"))
                 # dimensões
-                if str(row.get("category","")).strip():
-                    _set("category_id", get_or_create_dim_value("category", row.get("category")))
-                if str(row.get("vendor","")).strip():
-                    _set("vendor_id", get_or_create_dim_value("vendor", row.get("vendor")))
-                if str(row.get("cost_center","")).strip():
-                    _set("cost_center_id", get_or_create_dim_value("cost_center", row.get("cost_center")))
-                if str(row.get("payment_method","")).strip():
-                    _set("payment_method_id", get_or_create_dim_value("payment_method", row.get("payment_method")))
+                if str(row.get("category", "")).strip():
+                    _set(
+                        "category_id",
+                        get_or_create_dim_value("category", row.get("category")),
+                    )
+                if str(row.get("vendor", "")).strip():
+                    _set(
+                        "vendor_id",
+                        get_or_create_dim_value("vendor", row.get("vendor")),
+                    )
+                if str(row.get("cost_center", "")).strip():
+                    _set(
+                        "cost_center_id",
+                        get_or_create_dim_value("cost_center", row.get("cost_center")),
+                    )
+                if str(row.get("payment_method", "")).strip():
+                    _set(
+                        "payment_method_id",
+                        get_or_create_dim_value(
+                            "payment_method", row.get("payment_method")
+                        ),
+                    )
                 _set("recurrence", row.get("recurrence"))
-                if row.get("due_day") is not pd.NA and row.get("due_day") is not None and str(row.get("due_day")) != "":
+                if (
+                    row.get("due_day") is not pd.NA
+                    and row.get("due_day") is not None
+                    and str(row.get("due_day")) != ""
+                ):
                     try:
                         _set("due_day", int(row.get("due_day")))
                     except Exception:
@@ -434,7 +473,11 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
                 fact.loc[idx, "updated_at"] = utc_now()
                 if "version" in fact.columns:
                     try:
-                        fact.loc[idx, "version"] = (fact.loc[idx, "version"].fillna(1) if hasattr(fact.loc[idx, "version"], "fillna") else fact.loc[idx, "version"]) + 1
+                        fact.loc[idx, "version"] = (
+                            fact.loc[idx, "version"].fillna(1)
+                            if hasattr(fact.loc[idx, "version"], "fillna")
+                            else fact.loc[idx, "version"]
+                        ) + 1
                     except Exception:
                         fact.loc[idx, "version"] = 2
                 else:
@@ -450,13 +493,21 @@ def upsert_fixed_costs(df: pd.DataFrame) -> dict:
                     "period": row["period"],
                     "date": date_iso,
                     "description": row["description"],
-                    "category_id": get_or_create_dim_value("category", row.get("category")),
+                    "category_id": get_or_create_dim_value(
+                        "category", row.get("category")
+                    ),
                     "amount": float(row["amount"]),
-                    "payment_method_id": get_or_create_dim_value("payment_method", row.get("payment_method")),
+                    "payment_method_id": get_or_create_dim_value(
+                        "payment_method", row.get("payment_method")
+                    ),
                     "vendor_id": get_or_create_dim_value("vendor", row.get("vendor")),
                     "recurrence": row.get("recurrence"),
-                    "due_day": int(row["due_day"]) if pd.notna(row["due_day"]) else None,
-                    "cost_center_id": get_or_create_dim_value("cost_center", row.get("cost_center")),
+                    "due_day": (
+                        int(row["due_day"]) if pd.notna(row["due_day"]) else None
+                    ),
+                    "cost_center_id": get_or_create_dim_value(
+                        "cost_center", row.get("cost_center")
+                    ),
                     "invoice_number": row.get("invoice_number"),
                     "notes": row.get("notes"),
                     "created_at": utc_now(),

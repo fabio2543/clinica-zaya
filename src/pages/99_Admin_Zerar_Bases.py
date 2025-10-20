@@ -1,4 +1,3 @@
-
 import streamlit as st
 from pathlib import Path
 import shutil
@@ -26,8 +25,11 @@ st.subheader("Seleção")
 col1, col2 = st.columns(2)
 wipe_fixed = col1.checkbox("Apagar Custos Fixos (fact_fixed_cost)", value=True)
 wipe_prod = col1.checkbox("Apagar Produtos (fact_product_purchase)", value=True)
-wipe_dims = col2.checkbox("Apagar Dimensões (categorias, fornecedores, etc.)", value=False,
-                          help="Será recriado via get_or_create, mas você perderá rótulos/ativo/inativo.")
+wipe_dims = col2.checkbox(
+    "Apagar Dimensões (categorias, fornecedores, etc.)",
+    value=False,
+    help="Será recriado via get_or_create, mas você perderá rótulos/ativo/inativo.",
+)
 
 st.divider()
 if st.button("🔥 Apagar selecionados", type="primary", use_container_width=True):
