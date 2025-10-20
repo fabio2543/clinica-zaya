@@ -8,6 +8,7 @@ Funções principais:
 
 Persistência em Parquet (camada silver) com versionamento simples e soft delete.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -37,6 +38,7 @@ SALE_FILE = SALE_PATH / "sales.parquet"
 # ============================
 # HELPERS
 # ============================
+
 
 def utc_now() -> str:
     return datetime.utcnow().isoformat()
@@ -71,6 +73,7 @@ def save_parquet(df: pd.DataFrame, path: Path) -> None:
 # DOMAIN – CÁLCULOS
 # ============================
 
+
 def calc_base_cost(bom_rows: List[Dict]) -> float:
     if not bom_rows:
         return 0.0
@@ -82,11 +85,13 @@ def calc_base_cost(bom_rows: List[Dict]) -> float:
     return float(round(total, 2))
 
 
-def apply_commission(sale_price: float,
-                     model: str,
-                     rate: float | None = None,
-                     fixed_value: float | None = None,
-                     tiers_json: str | None = None) -> Tuple[float, str, float, Optional[str]]:
+def apply_commission(
+    sale_price: float,
+    model: str,
+    rate: float | None = None,
+    fixed_value: float | None = None,
+    tiers_json: str | None = None,
+) -> Tuple[float, str, float, Optional[str]]:
     model = (model or "percent").lower()
     tiers_used = None
     if model == "percent":
@@ -116,10 +121,12 @@ def apply_commission(sale_price: float,
     return 0.0, "percent", 0.0, None
 
 
-def calc_overhead(overhead_model: str,
-                  overhead_rate_value: float,
-                  sale_price: float,
-                  duration_minutes: float) -> float:
+def calc_overhead(
+    overhead_model: str,
+    overhead_rate_value: float,
+    sale_price: float,
+    duration_minutes: float,
+) -> float:
     m = (overhead_model or "none").lower()
     v = float(overhead_rate_value or 0)
     if m == "per_hour":
@@ -131,21 +138,35 @@ def calc_overhead(overhead_model: str,
     return 0.0
 
 
-def calc_preview(sale_price: float,
-                 base_cost: float,
-                 commission_model: str,
-                 commission_rate: float | None,
-                 commission_fixed_value: float | None,
-                 commission_tiers: str | None,
-                 overhead_model: str,
-                 overhead_rate_value: float,
-                 duration_minutes: float,
-                 gateway_fee_value: float) -> Dict:
+def calc_preview(
+    sale_price: float,
+    base_cost: float,
+    commission_model: str,
+    commission_rate: float | None,
+    commission_fixed_value: float | None,
+    commission_tiers: str | None,
+    overhead_model: str,
+    overhead_rate_value: float,
+    duration_minutes: float,
+    gateway_fee_value: float,
+) -> Dict:
     commission_value, model_applied, rate_applied, tier_used = apply_commission(
-        sale_price, commission_model, commission_rate, commission_fixed_value, commission_tiers
+        sale_price,
+        commission_model,
+        commission_rate,
+        commission_fixed_value,
+        commission_tiers,
     )
-    overhead_value = calc_overhead(overhead_model, overhead_rate_value, sale_price, duration_minutes)
-    net_profit = sale_price - base_cost - commission_value - overhead_value - float(gateway_fee_value or 0)
+    overhead_value = calc_overhead(
+        overhead_model, overhead_rate_value, sale_price, duration_minutes
+    )
+    net_profit = (
+        sale_price
+        - base_cost
+        - commission_value
+        - overhead_value
+        - float(gateway_fee_value or 0)
+    )
     margin_percent = (net_profit / sale_price * 100.0) if sale_price > 0 else 0.0
     return {
         "commission_value": round(commission_value, 2),
@@ -162,18 +183,33 @@ def calc_preview(sale_price: float,
 # DATA ACCESS – CATÁLOGO
 # ============================
 
+
 def get_catalog() -> pd.DataFrame:
     df = load_parquet(CATALOG_FILE)
     if df.empty:
         cols = [
-            "procedure_id", "name", "category", "duration_minutes",
-            "price_list", "discount_max_percent",
-            "commission_model", "commission_rate", "commission_fixed_value", "commission_tiers",
-            "bom_json", "base_cost",
-            "overhead_allocation_model", "overhead_rate_value",
-            "price_min_recommended", "markup_target_percent",
-            "active", "version", "valid_from", "valid_to", "is_deleted",
-            "record_key"
+            "procedure_id",
+            "name",
+            "category",
+            "duration_minutes",
+            "price_list",
+            "discount_max_percent",
+            "commission_model",
+            "commission_rate",
+            "commission_fixed_value",
+            "commission_tiers",
+            "bom_json",
+            "base_cost",
+            "overhead_allocation_model",
+            "overhead_rate_value",
+            "price_min_recommended",
+            "markup_target_percent",
+            "active",
+            "version",
+            "valid_from",
+            "valid_to",
+            "is_deleted",
+            "record_key",
         ]
         df = pd.DataFrame(columns=cols)
     return df
@@ -194,7 +230,13 @@ def upsert_catalog(row: Dict) -> None:
     row["record_key"] = record_key_from_dict(rk_payload)
 
     # se já existe procedimento com mesmo name+category ativo, inativar versão anterior
-    mask = (df["name"] == row["name"]) & (df["category"] == row["category"]) & (df["active"] == True) & (df["is_deleted"] == False)
+    mask = (
+        (df["name"] == row["name"])
+        & (df["category"] == row["category"])
+        & (df["active"])
+        & (~df["is_deleted"])
+    )
+
     if not df.empty and mask.any():
         df.loc[mask, "active"] = False
         df.loc[mask, "valid_to"] = utc_now()
@@ -220,15 +262,31 @@ def soft_delete_procedure(procedure_id: str) -> None:
 # DATA ACCESS – VENDAS
 # ============================
 
+
 def get_sales() -> pd.DataFrame:
     df = load_parquet(SALE_FILE)
     if df.empty:
         cols = [
-            "procedure_sale_id", "procedure_id", "name", "category", "professional",
-            "sale_datetime", "price_list_at_sale", "discount_percent", "sale_price",
-            "commission_model_applied", "commission_rate_applied", "commission_value",
-            "base_cost_at_sale", "overhead_value", "gateway_fee_value",
-            "net_profit", "margin_percent", "source_type", "package_id", "notes"
+            "procedure_sale_id",
+            "procedure_id",
+            "name",
+            "category",
+            "professional",
+            "sale_datetime",
+            "price_list_at_sale",
+            "discount_percent",
+            "sale_price",
+            "commission_model_applied",
+            "commission_rate_applied",
+            "commission_value",
+            "base_cost_at_sale",
+            "overhead_value",
+            "gateway_fee_value",
+            "net_profit",
+            "margin_percent",
+            "source_type",
+            "package_id",
+            "notes",
         ]
         df = pd.DataFrame(columns=cols)
     return df
@@ -246,10 +304,13 @@ def add_sale(row: Dict) -> None:
 # UI – STREAMLIT
 # ============================
 
+
 def _bom_editor(initial_rows: Optional[List[Dict]] = None) -> Tuple[List[Dict], float]:
     st.subheader("BOM (Insumos)")
     st.caption("Informe a quantidade e o custo unitário de cada insumo/produto.")
-    init = initial_rows or [{"product_code": "", "description": "", "qty": 1.0, "unit_cost": 0.0}]
+    init = initial_rows or [
+        {"product_code": "", "description": "", "qty": 1.0, "unit_cost": 0.0}
+    ]
     df_bom = pd.DataFrame(init)
     edited = st.data_editor(
         df_bom,
@@ -259,7 +320,9 @@ def _bom_editor(initial_rows: Optional[List[Dict]] = None) -> Tuple[List[Dict], 
             "product_code": st.column_config.TextColumn("Código"),
             "description": st.column_config.TextColumn("Descrição"),
             "qty": st.column_config.NumberColumn("Qtd", step=0.1, min_value=0.0),
-            "unit_cost": st.column_config.NumberColumn("Custo Unit.", step=0.01, min_value=0.0),
+            "unit_cost": st.column_config.NumberColumn(
+                "Custo Unit.", step=0.01, min_value=0.0
+            ),
         },
         key="bom_editor",
     )
@@ -277,25 +340,65 @@ def page_catalog():
         col1, col2 = st.columns(2)
         with col1:
             name = st.text_input("Nome do procedimento")
-            category = st.selectbox("Categoria", ["facial", "corporal", "laser", "injetável", "outros"], index=0)
-            duration_minutes = st.number_input("Duração (min)", min_value=0, step=5, value=60)
-            price_list = st.number_input("Preço de Tabela (R$)", min_value=0.0, step=10.0, value=300.0, format="%0.2f")
-            discount_max_percent = st.number_input("Desconto máx. (%)", min_value=0.0, max_value=100.0, step=1.0, value=10.0)
-            markup_target_percent = st.number_input("Markup alvo (%) (opcional)", min_value=0.0, step=1.0, value=0.0)
-            overhead_allocation_model = st.selectbox("Overhead (opcional)", ["none", "per_hour", "per_session", "per_revenue"], index=0)
-            overhead_rate_value = st.number_input("Valor do overhead (depende do modelo)", min_value=0.0, step=1.0, value=0.0)
+            category = st.selectbox(
+                "Categoria",
+                ["facial", "corporal", "laser", "injetável", "outros"],
+                index=0,
+            )
+            duration_minutes = st.number_input(
+                "Duração (min)", min_value=0, step=5, value=60
+            )
+            price_list = st.number_input(
+                "Preço de Tabela (R$)",
+                min_value=0.0,
+                step=10.0,
+                value=300.0,
+                format="%0.2f",
+            )
+            discount_max_percent = st.number_input(
+                "Desconto máx. (%)",
+                min_value=0.0,
+                max_value=100.0,
+                step=1.0,
+                value=10.0,
+            )
+            markup_target_percent = st.number_input(
+                "Markup alvo (%) (opcional)", min_value=0.0, step=1.0, value=0.0
+            )
+            overhead_allocation_model = st.selectbox(
+                "Overhead (opcional)",
+                ["none", "per_hour", "per_session", "per_revenue"],
+                index=0,
+            )
+            overhead_rate_value = st.number_input(
+                "Valor do overhead (depende do modelo)",
+                min_value=0.0,
+                step=1.0,
+                value=0.0,
+            )
         with col2:
-            commission_model = st.selectbox("Modelo de comissão", ["percent", "fixed", "tiered"], index=0)
-            commission_rate = st.number_input("% Comissão (0-1)", min_value=0.0, max_value=1.0, step=0.01, value=0.30)
-            commission_fixed_value = st.number_input("Comissão fixa (R$)", min_value=0.0, step=1.0, value=0.0)
-            commission_tiers = st.text_area("Tiers (JSON)", placeholder='Ex.: [{"min":0,"max":500,"rate":0.2},{"min":500,"max":999999,"rate":0.3}]')
+            commission_model = st.selectbox(
+                "Modelo de comissão", ["percent", "fixed", "tiered"], index=0
+            )
+            commission_rate = st.number_input(
+                "% Comissão (0-1)", min_value=0.0, max_value=1.0, step=0.01, value=0.30
+            )
+            commission_fixed_value = st.number_input(
+                "Comissão fixa (R$)", min_value=0.0, step=1.0, value=0.0
+            )
+            commission_tiers = st.text_area(
+                "Tiers (JSON)",
+                placeholder='Ex.: [{"min":0,"max":500,"rate":0.2},{"min":500,"max":999999,"rate":0.3}]',
+            )
             active = st.checkbox("Ativo", value=True)
 
         bom_rows, base_cost = _bom_editor()
 
         # Preview simples usando preço de tabela e gateway/overhead
         st.subheader("Preview de Margem (Preço de Tabela)")
-        gateway_fee_value = st.number_input("Gateway (R$)", min_value=0.0, step=1.0, value=0.0)
+        gateway_fee_value = st.number_input(
+            "Gateway (R$)", min_value=0.0, step=1.0, value=0.0
+        )
         pv = calc_preview(
             sale_price=price_list,
             base_cost=base_cost,
@@ -308,8 +411,14 @@ def page_catalog():
             duration_minutes=duration_minutes,
             gateway_fee_value=gateway_fee_value,
         )
-        st.metric("Margem (%)", f"{pv['margin_percent']}%", help=f"Lucro líquido: R$ {pv['net_profit']:.2f}")
-        st.caption(f"Comissão: R$ {pv['commission_value']:.2f} · Overhead: R$ {pv['overhead_value']:.2f}")
+        st.metric(
+            "Margem (%)",
+            f"{pv['margin_percent']}%",
+            help=f"Lucro líquido: R$ {pv['net_profit']:.2f}",
+        )
+        st.caption(
+            f"Comissão: R$ {pv['commission_value']:.2f} · Overhead: R$ {pv['overhead_value']:.2f}"
+        )
 
         # Preço mínimo recomendado por margem alvo (opcional): aqui usamos markup alvo como referência simples
         price_min_recommended = 0.0
@@ -317,10 +426,18 @@ def page_catalog():
             k = 1.0 + (markup_target_percent / 100.0)
             # Quando comissão for %: preço * rate -> fica no denominador numa versão refinada.
             # Para simplificar no catálogo: apenas garantir ganho sobre custo direto + overhead + gateway
-            price_min_recommended = round((base_cost + pv["overhead_value"] + gateway_fee_value) * k + (commission_fixed_value or 0.0), 2)
-            st.write(f"Preço mínimo recomendado (markup alvo): R$ {price_min_recommended:,.2f}")
+            price_min_recommended = round(
+                (base_cost + pv["overhead_value"] + gateway_fee_value) * k
+                + (commission_fixed_value or 0.0),
+                2,
+            )
+            st.write(
+                f"Preço mínimo recomendado (markup alvo): R$ {price_min_recommended:,.2f}"
+            )
 
-        if st.button("Salvar/Versionar procedimento", use_container_width=True, type="primary"):
+        if st.button(
+            "Salvar/Versionar procedimento", use_container_width=True, type="primary"
+        ):
             if not name:
                 st.error("Informe o nome do procedimento.")
             else:
@@ -356,7 +473,10 @@ def page_catalog():
     # Filtros básicos
     c1, c2, c3 = st.columns(3)
     with c1:
-        f_cat = st.selectbox("Filtrar por categoria", ["(todas)"] + sorted(df["category"].dropna().unique().tolist()))
+        f_cat = st.selectbox(
+            "Filtrar por categoria",
+            ["(todas)"] + sorted(df["category"].dropna().unique().tolist()),
+        )
     with c2:
         f_status = st.selectbox("Status", ["ativos", "inativos", "todos"], index=0)
     with c3:
@@ -366,19 +486,31 @@ def page_catalog():
     if f_cat != "(todas)":
         filtered = filtered[filtered["category"] == f_cat]
     if f_status == "ativos":
-        filtered = filtered[(filtered["active"] == True) & (filtered["is_deleted"] == False)]
+        filtered = filtered[(filtered["active"]) & (~filtered["is_deleted"])]
+
     elif f_status == "inativos":
-        filtered = filtered[(filtered["active"] == False) & (filtered["is_deleted"] == False)]
+        filtered = filtered[(filtered["active"]) & (~filtered["is_deleted"])]
     if f_text:
         filtered = filtered[filtered["name"].str.contains(f_text, case=False, na=False)]
 
     st.dataframe(
         filtered[
             [
-                "procedure_id", "name", "category", "duration_minutes",
-                "price_list", "base_cost", "commission_model", "commission_rate",
-                "commission_fixed_value", "overhead_allocation_model", "price_min_recommended",
-                "active", "version", "valid_from", "valid_to"
+                "procedure_id",
+                "name",
+                "category",
+                "duration_minutes",
+                "price_list",
+                "base_cost",
+                "commission_model",
+                "commission_rate",
+                "commission_fixed_value",
+                "overhead_allocation_model",
+                "price_min_recommended",
+                "active",
+                "version",
+                "valid_from",
+                "valid_to",
             ]
         ].sort_values(["name", "version"], ascending=[True, False]),
         use_container_width=True,
@@ -403,27 +535,59 @@ def page_sales():
         st.warning("Cadastre procedimentos antes de registrar vendas.")
         return
 
-    active_items = dfc[(dfc["active"] == True) & (dfc["is_deleted"] == False)]
-    options = active_items[["procedure_id", "name", "category", "price_list", "duration_minutes",
-                            "commission_model", "commission_rate", "commission_fixed_value",
-                            "commission_tiers", "bom_json", "base_cost",
-                            "overhead_allocation_model", "overhead_rate_value"]]
+    active_items = dfc[(dfc["active"]) & (~dfc["is_deleted"])]
+
+    options = active_items[
+        [
+            "procedure_id",
+            "name",
+            "category",
+            "price_list",
+            "duration_minutes",
+            "commission_model",
+            "commission_rate",
+            "commission_fixed_value",
+            "commission_tiers",
+            "bom_json",
+            "base_cost",
+            "overhead_allocation_model",
+            "overhead_rate_value",
+        ]
+    ]
 
     st.subheader("Lançar venda/execução")
-    sel = st.selectbox("Procedimento", options.apply(lambda r: f"{r['name']} · {r['category']} (R$ {r['price_list']:.2f})", axis=1))
-    idx = options.index[options.apply(lambda r: f"{r['name']} · {r['category']} (R$ {r['price_list']:.2f})", axis=1) == sel][0]
+    sel = st.selectbox(
+        "Procedimento",
+        options.apply(
+            lambda r: f"{r['name']} · {r['category']} (R$ {r['price_list']:.2f})",
+            axis=1,
+        ),
+    )
+    idx = options.index[
+        options.apply(
+            lambda r: f"{r['name']} · {r['category']} (R$ {r['price_list']:.2f})",
+            axis=1,
+        )
+        == sel
+    ][0]
     row = options.loc[idx].to_dict()
 
     col1, col2, col3 = st.columns(3)
     with col1:
         sale_dt = st.datetime_input("Data/Hora da venda", value=datetime.now())
-        discount_percent = st.number_input("Desconto (%)", min_value=0.0, max_value=100.0, step=1.0, value=0.0)
-        gateway_fee_value = st.number_input("Gateway (R$)", min_value=0.0, step=1.0, value=0.0)
+        discount_percent = st.number_input(
+            "Desconto (%)", min_value=0.0, max_value=100.0, step=1.0, value=0.0
+        )
+        gateway_fee_value = st.number_input(
+            "Gateway (R$)", min_value=0.0, step=1.0, value=0.0
+        )
     with col2:
         professional = st.text_input("Profissional (opcional)")
         notes = st.text_input("Observações (opcional)")
     with col3:
-        price_list_at_sale = float(row["price_list"]) if row.get("price_list") is not None else 0.0
+        price_list_at_sale = (
+            float(row["price_list"]) if row.get("price_list") is not None else 0.0
+        )
         dsc = (discount_percent or 0.0) / 100.0
         sale_price = round(price_list_at_sale * (1 - dsc), 2)
         st.metric("Preço efetivo", f"R$ {sale_price:,.2f}")
@@ -485,7 +649,10 @@ def page_sales():
     # filtros simples
     c1, c2 = st.columns(2)
     with c1:
-        f_cat = st.selectbox("Categoria", ["(todas)"] + sorted(dfs["category"].dropna().unique().tolist()))
+        f_cat = st.selectbox(
+            "Categoria",
+            ["(todas)"] + sorted(dfs["category"].dropna().unique().tolist()),
+        )
     with c2:
         f_name = st.text_input("Procedimento (busca)")
 
@@ -505,6 +672,7 @@ def page_sales():
 # ============================
 # ENTRYPOINT – PÁGINA
 # ============================
+
 
 def render():
     tabs = st.tabs(["Catálogo", "Vendas/Execuções"])

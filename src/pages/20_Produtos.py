@@ -1,208 +1,359 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import date
+from pathlib import Path
+import inspect
 
 from src.dataio.products import (
     upsert_products,
     create_product_purchase,
     delete_product_purchase,
-    list_categories as list_categories_pd,
 )
 
+try:
+    from src.dataio.products import list_categories as list_categories_pd
+except (ImportError, AttributeError):
+
+    def list_categories_pd() -> list[str]:
+        dim_path = Path("data/silver/dim_category.parquet")
+        fact_path = Path("data/silver/fact_product/products.parquet")
+        if dim_path.exists():
+            df = pd.read_parquet(dim_path)
+            if not df.empty and "category" in df.columns:
+                return sorted(df["category"].dropna().astype(str).unique().tolist())
+        if fact_path.exists():
+            df = pd.read_parquet(fact_path)
+            if not df.empty and "category" in df.columns:
+                return sorted(df["category"].dropna().astype(str).unique().tolist())
+        return ["produto"]
+
+
+try:
+    from src.dataio.products import list_vendors as list_vendors_pd
+except (ImportError, AttributeError):
+
+    def list_vendors_pd() -> list[str]:
+        purchases_path = Path("data/silver/fact_product_purchase/purchases.parquet")
+        alt_path = Path("data/silver/fact_product/products.parquet")
+        for path in (purchases_path, alt_path):
+            if path.exists():
+                df = pd.read_parquet(path)
+                for col in ("vendor", "vendor_name", "fornecedor"):
+                    if col in df.columns:
+                        vals = (
+                            df[col]
+                            .dropna()
+                            .astype(str)
+                            .replace({"": None})
+                            .dropna()
+                            .unique()
+                            .tolist()
+                        )
+                        return sorted(set(vals))
+        return []
+
+
+try:
+    from src.dataio.products import read_products
+except (ImportError, AttributeError):
+
+    def read_products(_: None) -> pd.DataFrame:
+        purchases_path = Path("data/silver/fact_product_purchase/purchases.parquet")
+        alt_path = Path("data/silver/fact_product/products.parquet")
+        if purchases_path.exists():
+            return pd.read_parquet(purchases_path)
+        if alt_path.exists():
+            return pd.read_parquet(alt_path)
+        return pd.DataFrame()
+
+
+def _call_create_product_purchase_adapter(
+    *,
+    nome: str,
+    categoria: str,
+    fornecedor: str,
+    valor_compra: float,
+    quantidade: float,
+    data_compra,
+):
+    """
+    Se create_product_purchase aceitar apenas `row`, montamos o payload completo em PT+EN.
+    """
+
+    sig = inspect.signature(create_product_purchase)
+    allowed = set(sig.parameters.keys())
+
+    # Payload "row" com chaves em PT e EN para máxima compatibilidade
+    row_payload = {
+        # Identificação
+        "nome": nome,
+        "name": nome,
+        "product_name": nome,
+        "title": nome,
+        # Categoria
+        "categoria": categoria,
+        "category": categoria,
+        # Fornecedor
+        "fornecedor": fornecedor,
+        "vendor": fornecedor,
+        "supplier": fornecedor,
+        # Preço / custo
+        "valor_compra": valor_compra,
+        "purchase_price": valor_compra,
+        "unit_cost": valor_compra,
+        "cost": valor_compra,
+        "price": valor_compra,
+        # Quantidade
+        "quantidade": quantidade,
+        "quantity": quantidade,
+        "qty": quantidade,
+        # Datas
+        "data_compra": str(data_compra),
+        "purchase_date": str(data_compra),
+        "date": str(data_compra),
+        "dt": str(data_compra),
+    }
+
+    if "row" in allowed:
+        return create_product_purchase(row=row_payload)
+
+    # fallback: se não tiver `row`, tenta mapear por kwargs individuais (caso exista outro formato)
+    candidates = {
+        "name": nome,
+        "product_name": nome,
+        "title": nome,
+        "category": categoria,
+        "vendor": fornecedor,
+        "supplier": fornecedor,
+        "purchase_price": valor_compra,
+        "unit_cost": valor_compra,
+        "cost": valor_compra,
+        "price": valor_compra,
+        "quantity": quantidade,
+        "qty": quantidade,
+        "purchase_date": data_compra,
+        "date": data_compra,
+        "dt": data_compra,
+    }
+    payload = {k: v for k, v in candidates.items() if k in allowed}
+    if not payload:
+        raise TypeError(
+            f"create_product_purchase sem match. Aceitos: {sorted(allowed)}"
+        )
+    return create_product_purchase(**payload)
+
+
+def _call_create_product_purchase_adapter(
+    *,
+    nome: str,
+    categoria: str,
+    fornecedor: str,
+    valor_compra: float,
+    quantidade: float,
+    data_compra,
+):
+    """
+    Se create_product_purchase aceitar apenas `row`, montamos o payload completo em PT+EN.
+    """
+
+    sig = inspect.signature(create_product_purchase)
+    allowed = set(sig.parameters.keys())
+
+    # Payload "row" com chaves em PT e EN para máxima compatibilidade
+    row_payload = {
+        # Identificação
+        "nome": nome,
+        "name": nome,
+        "product_name": nome,
+        "title": nome,
+        # Categoria
+        "categoria": categoria,
+        "category": categoria,
+        # Fornecedor
+        "fornecedor": fornecedor,
+        "vendor": fornecedor,
+        "supplier": fornecedor,
+        # Preço / custo
+        "valor_compra": valor_compra,
+        "purchase_price": valor_compra,
+        "unit_cost": valor_compra,
+        "cost": valor_compra,
+        "price": valor_compra,
+        # Quantidade
+        "quantidade": quantidade,
+        "quantity": quantidade,
+        "qty": quantidade,
+        # Datas
+        "data_compra": str(data_compra),
+        "purchase_date": str(data_compra),
+        "date": str(data_compra),
+        "dt": str(data_compra),
+    }
+
+    if "row" in allowed:
+        return create_product_purchase(row=row_payload)
+
+    # fallback: se não tiver `row`, tenta mapear por kwargs individuais (caso exista outro formato)
+    candidates = {
+        "name": nome,
+        "product_name": nome,
+        "title": nome,
+        "category": categoria,
+        "vendor": fornecedor,
+        "supplier": fornecedor,
+        "purchase_price": valor_compra,
+        "unit_cost": valor_compra,
+        "cost": valor_compra,
+        "price": valor_compra,
+        "quantity": quantidade,
+        "qty": quantidade,
+        "purchase_date": data_compra,
+        "date": data_compra,
+        "dt": data_compra,
+    }
+    payload = {k: v for k, v in candidates.items() if k in allowed}
+    if not payload:
+        raise TypeError(
+            f"create_product_purchase sem match. Aceitos: {sorted(allowed)}"
+        )
+    return create_product_purchase(**payload)
+
+
+def _call_upsert_products_adapter(*, id, nome, categoria, valor_compra, quantidade):
+    """
+    Suporta tanto `row` quanto kwargs. Usa PT+EN no payload.
+    """
+
+    sig = inspect.signature(upsert_products)
+    allowed = set(sig.parameters.keys())
+
+    row_payload = {
+        "id": id,
+        "nome": nome,
+        "name": nome,
+        "product_name": nome,
+        "categoria": categoria,
+        "category": categoria,
+        "valor_compra": valor_compra,
+        "purchase_price": valor_compra,
+        "unit_cost": valor_compra,
+        "cost": valor_compra,
+        "quantidade": quantidade,
+        "quantity": quantidade,
+        "qty": quantidade,
+    }
+
+    if "row" in allowed:
+        return upsert_products(row=row_payload)
+
+    candidates = {
+        "id": id,
+        "name": nome,
+        "product_name": nome,
+        "category": categoria,
+        "purchase_price": valor_compra,
+        "unit_cost": valor_compra,
+        "cost": valor_compra,
+        "quantity": quantidade,
+        "qty": quantidade,
+    }
+    payload = {k: v for k, v in candidates.items() if k in allowed}
+    if not payload:
+        raise TypeError(f"upsert_products sem match. Aceitos: {sorted(allowed)}")
+    return upsert_products(**payload)
+
+
+st.set_page_config(page_title="Produtos | Zaya", layout="wide")
 st.title("🧪 Produtos (Compras/Entradas)")
 
-# -------------------- FILTROS (Data/Produto + Categoria/Fornecedor) --------------------
-row1 = st.columns([1, 1, 1, 1])
-start_date = row1[0].date_input(
-    "Data inicial", value=date.today().replace(day=1), key="prod_start"
-)
-end_date = row1[1].date_input("Data final", value=date.today(), key="prod_end")
-product_search = row1[2].text_input("Produto (nome contém)", key="prod_search")
-buscar_prod = row1[3].button(
-    "🔍 Buscar", use_container_width=True, key="prod_buscar_btn"
+menu = st.radio(
+    "Selecione a operação",
+    ["Visualizar", "Cadastro", "Atualização", "Exclusão"],
+    horizontal=True,
 )
 
-row2 = st.columns([1])
-vendor_opts = ["(todos)"] + list_vendors_pd()
-vendor = row2[0].selectbox("Fornecedor", vendor_opts, index=0, key="prod_vendor_filter")
-
-st.divider()
-
-# -------------------- LISTAGEM --------------------
-dfp = pd.DataFrame()
-if buscar_prod:
-    tmp = read_products(None)
-    if vendor != "(todos)" and "vendor_name" in tmp.columns:
-        tmp = tmp[tmp["vendor_name"] == vendor]
-    if product_search.strip() and "product_name" in tmp.columns:
-        s = product_search.strip().lower()
-        tmp = tmp[tmp["product_name"].astype(str).str.lower().str.contains(s)]
-    if "purchase_date" in tmp.columns:
-        tmp["purchase_date"] = pd.to_datetime(tmp["purchase_date"], errors="coerce")
-        mask = (tmp["purchase_date"].dt.date >= start_date) & (
-            tmp["purchase_date"].dt.date <= end_date
-        )
-        tmp = tmp[mask]
-    st.session_state["df_produtos"] = tmp
-
-dfp = st.session_state.get("df_produtos", pd.DataFrame())
-
-# Carregamento inicial (últimos 60 dias) para evitar tela vazia
-if dfp.empty and not buscar_prod:
-    tmp = read_products(None)
-    if "purchase_date" in tmp.columns:
-        tmp["purchase_date"] = pd.to_datetime(tmp["purchase_date"], errors="coerce")
-        start_default = (pd.Timestamp.today() - pd.Timedelta(days=60)).date()
-        end_default = pd.Timestamp.today().date()
-        mask = (tmp["purchase_date"].dt.date >= start_default) & (
-            tmp["purchase_date"].dt.date <= end_default
-        )
-        tmp = tmp[mask]
-    st.session_state["df_produtos"] = tmp
-    dfp = tmp
-
-if dfp.empty and buscar_prod:
-    st.info("Nenhuma entrada encontrada para os filtros atuais.")
-elif not dfp.empty:
-    st.caption(f"{len(dfp)} registros encontrados")
-    dfp_view = dfp.copy()
-    dfp_view["Selecionar"] = False
-
-    edited_p = st.data_editor(
-        dfp_view,
-        column_config={"Selecionar": st.column_config.CheckboxColumn(required=False)},
-        hide_index=True,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="grid_produtos",
+df = read_products(None)
+if df.empty:
+    st.warning("Nenhum produto encontrado ainda. Faça um cadastro.")
+    df = pd.DataFrame(
+        columns=["id", "nome", "categoria", "valor_compra", "quantidade", "is_deleted"]
     )
 
-    selected_ids_p = edited_p.loc[
-        edited_p["Selecionar"], "product_purchase_id"
-    ].tolist()
+if menu == "Visualizar":
+    st.subheader("📦 Catálogo de Produtos / Insumos")
+    hide_deleted = st.checkbox("Ocultar itens excluídos", value=True)
+    if hide_deleted and "is_deleted" in df.columns:
+        df = df[~df["is_deleted"].fillna(False)]
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button(
-            "🗑️ Excluir selecionados",
-            disabled=len(selected_ids_p) == 0,
-            use_container_width=True,
-            key="prod_del_btn",
-        ):
-            n = delete_product_purchase(selected_ids_p)
-            if "df_produtos" in st.session_state:
-                df_local = st.session_state["df_produtos"]
-                st.session_state["df_produtos"] = df_local[
-                    ~df_local["product_purchase_id"].isin(selected_ids_p)
-                ].reset_index(drop=True)
-            st.success(f"🗑️ {n} registro(s) excluído(s) com sucesso.")
-            st.rerun()
-
-    with c2:
-        if st.button("⬇️ Exportar CSV", use_container_width=True, key="prod_export_btn"):
-            csv_bytes = dfp.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Baixar CSV filtrado",
-                data=csv_bytes,
-                file_name=f"produtos_{datetime.now():%Y%m%d}.csv",
-                mime="text/csv",
-            )
-
-st.divider()
-
-# -------------------- CADASTRO UNITÁRIO --------------------
-st.markdown("### ➕ Entrada de produto (unitária)")
-with st.form("form_novo_produto"):
-    c1, c2, c3 = st.columns(3)
-    p_name = c1.text_input("Nome do produto *", placeholder="Ex.: Luvas Nitrílicas (M)")
-    unit_price = c2.number_input(
-        "Preço unitário (R$) *", min_value=0.0, step=0.01, format="%.2f"
-    )
-    quantity = c3.number_input("Quantidade *", min_value=0, step=1)
-    c4, c5, c6 = st.columns(3)
-    purchase_date = c4.date_input("Data da compra *", value=date.today())
-    sku = c5.text_input("SKU", placeholder="Opcional")
-    c7, c8 = st.columns(2)
-    vendor_new = c7.selectbox(
-        "Fornecedor",
-        options=list_vendors_pd() + ["Não informado"],
-        key="prod_vendor_form",
-    )
-    notes = c8.text_input("Observações")
-    submit_p = st.form_submit_button("Salvar")
-
-    if submit_p:
-        row = {
-            "product_name": p_name,
-            "unit_price": unit_price,
-            "purchase_date": purchase_date.isoformat(),
-            "quantity": quantity,
-            "sku": sku,
-            "category": "Produto",
-            "vendor": vendor_new,
-            "notes": notes,
-        }
-        res = create_product_purchase(row)
-        st.success(f"Entrada registrada. {res}")
-
-st.divider()
-
-# -------------------- TEMPLATE + CARGA --------------------
-st.markdown("### 📥 Importação (CSV/XLSX) + Template")
-
-sample_p = pd.DataFrame(
-    [
-        {
-            "product_name": "Luvas Nitrílicas (M)",
-            "unit_price": 0.80,
-            "purchase_date": datetime.now().date().isoformat(),
-            "quantity": 300,
-            "sku": "LUV-NIT-M",
-            "vendor": "Fornecedor Geral",
-            "notes": "Caixa com 100",
-        }
-    ]
-)
-st.download_button(
-    "⬇️ Baixar template (CSV)",
-    data=sample_p.to_csv(index=False).encode("utf-8"),
-    file_name="template_produtos.csv",
-    mime="text/csv",
-)
-
-up_p = st.file_uploader(
-    "Envie CSV/XLSX no layout padrão de produtos",
-    type=["csv", "xls", "xlsx"],
-    key="upl_prod",
-)
-if up_p:
-    try:
-        raw_p = (
-            pd.read_csv(up_p)
-            if up_p.name.lower().endswith(".csv")
-            else pd.read_excel(up_p)
+elif menu == "Cadastro":
+    st.subheader("🆕 Novo Produto / Insumo")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        nome = st.text_input("Nome do produto")
+        categoria = st.selectbox("Categoria", list_categories_pd())
+    with col2:
+        valor_compra = st.number_input(
+            "Valor de compra (R$)", min_value=0.0, step=0.01, value=0.0
         )
-        st.write("Prévia do arquivo:")
-        st.dataframe(raw_p.head(50), use_container_width=True)
+        quantidade = st.number_input("Quantidade", min_value=0.0, step=1.0, value=1.0)
+    with col3:
+        fornecedor = st.selectbox("Fornecedor", list_vendors_pd())
+        data_compra = st.date_input("Data da compra", value=date.today())
 
-        required_p = {"product_name", "unit_price", "purchase_date", "quantity"}
-        norm_cols_p = {c.strip().lower() for c in raw_p.columns}
-        missing_p = required_p - norm_cols_p
-
-        if missing_p:
-            st.error(f"Colunas obrigatórias ausentes: {', '.join(sorted(missing_p))}")
+    if st.button("Salvar produto", type="primary", use_container_width=True):
+        if not nome:
+            st.error("Informe o nome do produto.")
         else:
-            if st.button("Carregar arquivo de produtos", type="primary"):
-                raw_p = raw_p.copy()
-                if "category" not in raw_p.columns:
-                    raw_p["category"] = "Produto"
-                else:
-                    raw_p["category"] = (
-                        raw_p["category"].fillna("Produto").replace({"": "Produto"})
-                    )
-                res = upsert_products(raw_p)
-                st.success(
-                    f"Carga concluída. Inseridos: {res['inserted']} | Atualizados: {res['updated']} | Erros: {res['errors']}"
-                )
-    except Exception as e:
-        st.error(f"Erro ao processar arquivo: {e}")
+            _call_create_product_purchase_adapter(
+                nome=nome,
+                categoria=categoria,
+                fornecedor=fornecedor,
+                valor_compra=valor_compra,
+                quantidade=quantidade,
+                data_compra=data_compra,
+            )
+            st.success(f"Produto '{nome}' cadastrado com sucesso.")
+            st.experimental_rerun()
+
+elif menu == "Atualização":
+    st.subheader("✏️ Atualizar produto existente")
+    base = df[~df["is_deleted"].fillna(False)].copy()
+    if base.empty:
+        st.info("Não há produtos para atualizar.")
+    else:
+        selecionado = st.selectbox("Selecione o produto", base["nome"].tolist())
+        linha = base[base["nome"] == selecionado].iloc[0]
+
+        nome = st.text_input("Nome do produto", linha.get("nome", ""))
+        categoria = st.selectbox("Categoria", list_categories_pd(), index=0)
+        valor_compra = st.number_input(
+            "Valor de compra (R$)", value=float(linha.get("valor_compra", 0.0))
+        )
+        quantidade = st.number_input(
+            "Quantidade", value=float(linha.get("quantidade", 0.0))
+        )
+
+        if st.button("Salvar alterações", type="primary", use_container_width=True):
+            _call_upsert_products_adapter(
+                id=linha.get("id"),
+                nome=nome,
+                categoria=categoria,
+                valor_compra=valor_compra,
+                quantidade=quantidade,
+            )
+            st.success("Produto atualizado com sucesso.")
+            st.experimental_rerun()
+
+elif menu == "Exclusão":
+    st.subheader("🗑️ Exclusão (soft delete)")
+    base = df[~df["is_deleted"].fillna(False)].copy()
+    if base.empty:
+        st.info("Não há produtos para excluir.")
+    else:
+        selecionado = st.selectbox("Selecione o produto", base["nome"].tolist())
+        linha = base[base["nome"] == selecionado].iloc[0]
+        if st.button("Excluir produto", type="primary", use_container_width=True):
+            delete_product_purchase(linha.get("id"))
+            st.success("Produto excluído com sucesso (soft delete).")
+            st.experimental_rerun()

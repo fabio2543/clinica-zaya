@@ -3,6 +3,7 @@ import uuid
 import io
 from datetime import datetime, date
 import pandas as pd
+import streamlit as st  # ✅ necessário para usar st.set_page_config, st.title etc.
 
 BASE_DIR = "/mnt/data/zaya_products"
 PARQUET_PATH = os.path.join(BASE_DIR, "products.parquet")

@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import pandas as pd
 from src.utils.helpers import (
@@ -15,9 +14,17 @@ FACT_DIR = SILVER / "fact_product_purchase"  # partição por data da compra
 
 # Sementes (inclui "Produto" como categoria padrão)
 SEED_DIM = {
-    "category": ["Produto", "Insumos", "Injetáveis", "Equipamentos", "Descartáveis", "Outros"],
+    "category": [
+        "Produto",
+        "Insumos",
+        "Injetáveis",
+        "Equipamentos",
+        "Descartáveis",
+        "Outros",
+    ],
     "vendor": ["Fornecedor Geral", "Distribuidora XYZ"],
 }
+
 
 def get_or_create_dim_value(dim_name: str, value: str | None):
     id_col = f"{dim_name}_id"
@@ -28,7 +35,16 @@ def get_or_create_dim_value(dim_name: str, value: str | None):
     if path.exists():
         df = pd.read_parquet(path)
     else:
-        df = pd.DataFrame(columns=[id_col, code_col, name_col, "created_at", "updated_at", "is_active"])
+        df = pd.DataFrame(
+            columns=[
+                id_col,
+                code_col,
+                name_col,
+                "created_at",
+                "updated_at",
+                "is_active",
+            ]
+        )
 
     if not value or str(value).strip() == "":
         value = "Não informado"
@@ -52,6 +68,7 @@ def get_or_create_dim_value(dim_name: str, value: str | None):
     df.to_parquet(path, index=False)
     return int(new_id)
 
+
 def ensure_seed_dimensions():
     for dim_name, items in SEED_DIM.items():
         for val in items:
@@ -60,10 +77,12 @@ def ensure_seed_dimensions():
             except Exception:
                 pass
 
+
 try:
     ensure_seed_dimensions()
 except Exception:
     pass
+
 
 def _part_file_for_date(purchase_date: str) -> Path:
     dt = pd.to_datetime(purchase_date).date()
@@ -73,10 +92,12 @@ def _part_file_for_date(purchase_date: str) -> Path:
     part_dir.mkdir(parents=True, exist_ok=True)
     return part_dir / "data.parquet"
 
+
 def _ensure_df(path: Path, cols: list[str]) -> pd.DataFrame:
     if path.exists():
         return pd.read_parquet(path)
     return pd.DataFrame(columns=cols)
+
 
 def list_vendors() -> list[str]:
     p = DIM_DIR / "dim_vendor.parquet"
@@ -93,6 +114,7 @@ def list_vendors() -> list[str]:
         .sort_values()
         .tolist()
     )
+
 
 # ----------------- READ (com joins em dimensões) -----------------
 def read_products(category: str | None = None) -> pd.DataFrame:
@@ -119,9 +141,13 @@ def read_products(category: str | None = None) -> pd.DataFrame:
     dven = _dim("vendor")
 
     if "category_id" in fact.columns and not dcat.empty:
-        fact = fact.merge(dcat[["category_id", "category_name"]], on="category_id", how="left")
+        fact = fact.merge(
+            dcat[["category_id", "category_name"]], on="category_id", how="left"
+        )
     if "vendor_id" in fact.columns and not dven.empty:
-        fact = fact.merge(dven[["vendor_id", "vendor_name"]], on="vendor_id", how="left")
+        fact = fact.merge(
+            dven[["vendor_id", "vendor_name"]], on="vendor_id", how="left"
+        )
 
     if category:
         if "category_name" in fact.columns:
@@ -146,10 +172,12 @@ def read_products(category: str | None = None) -> pd.DataFrame:
         ["purchase_date", "product_name"], ascending=[False, True]
     )
 
+
 # ----------------- CREATE / UPDATE / DELETE -----------------
 def create_product_purchase(row: dict) -> dict:
     df = pd.DataFrame([row])
     return upsert_products(df)
+
 
 def update_product_purchase(product_purchase_id: str, updates: dict) -> bool:
     for path in FACT_DIR.glob("year=*/month=*/data.parquet"):
@@ -162,10 +190,15 @@ def update_product_purchase(product_purchase_id: str, updates: dict) -> bool:
                 if k in fact.columns:
                     fact.loc[mask, k] = v
             fact.loc[mask, "updated_at"] = utc_now()
-            fact.loc[mask, "version"] = fact.loc[mask, "version"].fillna(1) + 1 if "version" in fact.columns else 2
+            fact.loc[mask, "version"] = (
+                fact.loc[mask, "version"].fillna(1) + 1
+                if "version" in fact.columns
+                else 2
+            )
             fact.to_parquet(path, index=False)
             return True
     return False
+
 
 def delete_product_purchase(ids: list[str]) -> int:
     """
@@ -184,6 +217,7 @@ def delete_product_purchase(ids: list[str]) -> int:
             count += removed
     return count
 
+
 # ----------------- UPSERT (Carga unitária/massiva) -----------------
 def upsert_products(df: pd.DataFrame) -> dict:
     """
@@ -199,18 +233,24 @@ def upsert_products(df: pd.DataFrame) -> dict:
 
     # Coagir numéricos
     if "unit_price" in df.columns:
-        df["unit_price"] = pd.to_numeric(df["unit_price"], errors="coerce").fillna(0.0).astype(float)
+        df["unit_price"] = (
+            pd.to_numeric(df["unit_price"], errors="coerce").fillna(0.0).astype(float)
+        )
     else:
         df["unit_price"] = 0.0
 
     if "quantity" in df.columns:
-        df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0).astype(int)
+        df["quantity"] = (
+            pd.to_numeric(df["quantity"], errors="coerce").fillna(0).astype(int)
+        )
     else:
         df["quantity"] = 0
 
     # Datas
     if "purchase_date" in df.columns:
-        df["purchase_date"] = pd.to_datetime(df["purchase_date"], errors="coerce").dt.date.astype("string")
+        df["purchase_date"] = pd.to_datetime(
+            df["purchase_date"], errors="coerce"
+        ).dt.date.astype("string")
     else:
         df["purchase_date"] = pd.NaT
 
@@ -232,23 +272,34 @@ def upsert_products(df: pd.DataFrame) -> dict:
     for _, row in df.iterrows():
         try:
             # valida purchase_date
-            if not row.get("purchase_date") or str(row["purchase_date"]).lower() in ["nat", "nan"]:
+            if not row.get("purchase_date") or str(row["purchase_date"]).lower() in [
+                "nat",
+                "nan",
+            ]:
                 raise ValueError("purchase_date inválida/ausente")
 
-            purchase_date = pd.to_datetime(str(row["purchase_date"]), errors="raise").date().isoformat()
+            purchase_date = (
+                pd.to_datetime(str(row["purchase_date"]), errors="raise")
+                .date()
+                .isoformat()
+            )
             part_file = _part_file_for_date(purchase_date)
 
             # Chave idempotente (sem usar generate_record_key para evitar aridade)
             rk = normalize_text(
-                f"{purchase_date}|{row.get('product_name','')}|"
+                f"{purchase_date}|{row.get('product_name', '')}|"
                 f"{float(row.get('unit_price', 0) or 0):.4f}|"
                 f"{int(row.get('quantity', 0) or 0)}|"
-                f"{row.get('vendor','')}|{row.get('sku','')}"
+                f"{row.get('vendor', '')}|{row.get('sku', '')}"
             )
 
             fact = pd.read_parquet(part_file) if part_file.exists() else pd.DataFrame()
 
-            if (not fact.empty) and ("record_key" in fact.columns) and (rk in fact["record_key"].values):
+            if (
+                (not fact.empty)
+                and ("record_key" in fact.columns)
+                and (rk in fact["record_key"].values)
+            ):
                 # update
                 idx = fact.index[fact["record_key"] == rk][0]
                 for col in ["product_name", "sku", "unit_price", "quantity", "notes"]:
@@ -256,13 +307,21 @@ def upsert_products(df: pd.DataFrame) -> dict:
                         fact.loc[idx, col] = row.get(col, fact.loc[idx, col])
                 # atualiza dimensões se vierem
                 if "category" in row and str(row["category"]).strip() != "":
-                    fact.loc[idx, "category_id"] = get_or_create_dim_value("category", row.get("category"))
+                    fact.loc[idx, "category_id"] = get_or_create_dim_value(
+                        "category", row.get("category")
+                    )
                 if "vendor" in row and str(row["vendor"]).strip() != "":
-                    fact.loc[idx, "vendor_id"] = get_or_create_dim_value("vendor", row.get("vendor"))
+                    fact.loc[idx, "vendor_id"] = get_or_create_dim_value(
+                        "vendor", row.get("vendor")
+                    )
                 fact.loc[idx, "updated_at"] = utc_now()
-                current_version = fact.loc[idx, "version"] if "version" in fact.columns else 1
+                current_version = (
+                    fact.loc[idx, "version"] if "version" in fact.columns else 1
+                )
                 try:
-                    fact.loc[idx, "version"] = (int(current_version) if pd.notna(current_version) else 1) + 1
+                    fact.loc[idx, "version"] = (
+                        int(current_version) if pd.notna(current_version) else 1
+                    ) + 1
                 except Exception:
                     fact.loc[idx, "version"] = 2
                 results["updated"] += 1
@@ -279,7 +338,9 @@ def upsert_products(df: pd.DataFrame) -> dict:
                     "sku": row.get("sku"),
                     "unit_price": float(row.get("unit_price", 0) or 0),
                     "quantity": int(row.get("quantity", 0) or 0),
-                    "category_id": get_or_create_dim_value("category", row.get("category")),
+                    "category_id": get_or_create_dim_value(
+                        "category", row.get("category")
+                    ),
                     "vendor_id": get_or_create_dim_value("vendor", row.get("vendor")),
                     "notes": row.get("notes"),
                     "created_at": utc_now(),
@@ -296,3 +357,27 @@ def upsert_products(df: pd.DataFrame) -> dict:
             results["errors"] += 1
 
     return results
+
+
+DIM_CATEGORY_FILE = Path("data/silver/dim_category.parquet")
+FACT_PRODUCT_FILE = Path("data/silver/fact_product/products.parquet")
+
+
+def list_categories() -> list[str]:
+    """
+    Retorna a lista de categorias disponíveis.
+    1) Tenta dim_category.parquet
+    2) Cai para fact_product/products.parquet
+    3) Fallback: ['produto']
+    """
+    if DIM_CATEGORY_FILE.exists():
+        df = pd.read_parquet(DIM_CATEGORY_FILE)
+        if not df.empty and "category" in df.columns:
+            return sorted(df["category"].dropna().astype(str).unique().tolist())
+
+    if FACT_PRODUCT_FILE.exists():
+        df = pd.read_parquet(FACT_PRODUCT_FILE)
+        if not df.empty and "category" in df.columns:
+            return sorted(df["category"].dropna().astype(str).unique().tolist())
+
+    return ["produto"]  # padrão do projeto

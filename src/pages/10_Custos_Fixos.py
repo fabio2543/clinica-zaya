@@ -60,7 +60,7 @@ elif not df.empty:
     if "Selecionar" in edited.columns:
         mask_sel = edited["Selecionar"].fillna(False).astype(bool)
     else:
-        mask_sel = _pd.Series([False] * len(edited), index=edited.index)
+        mask_sel = pd.Series([False] * len(edited), index=edited.index)
 
     if id_col in edited.columns:
         selected_ids = edited.loc[mask_sel, id_col].dropna().astype(str).tolist()
