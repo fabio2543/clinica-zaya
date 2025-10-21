@@ -655,33 +655,53 @@ faltam_unidades_efetivo = (
 faltam_unidades_planejado = (
     (faltante_RS / contrib_avg_planejado) if contrib_avg_planejado > 0 else float("inf")
 )
+comissao_sum = float(result["comissao_total"].sum())
 
-# KPIs principais
-k1, k2, k3, k4 = st.columns(4)
-k1.metric(
-    "Faturamento bruto realizado (R$)",
-    f"{fat_bruto_kpi:,.2f}",
-    help="Com comissão global por faturamento, mostra o faturamento mensal previsto (manual ou automático).",
-)
-k2.metric("Lucro realizado (R$)", f"{lucro_sum:,.2f}")
-k3.metric("Margem realizada (%)", f"{margem_realizada * 100:.2f}%")
-k4.metric("Unidades vendidas", f"{unid_vendidas_sum:,.0f}")
+# =========================
+# KPIs — layout organizado
+# =========================
 
-k5, k6, k7 = st.columns(3)
-k5.metric("Contribuição gerada (R$)", f"{contrib_sum:,.2f}")
-k6.metric("Faltante p/ BE (R$)", f"{faltante_RS:,.2f}")
-atingimento = (contrib_sum / fixed_costs) if fixed_costs > 0 else 0.0
-k7.metric("Atingimento do BE (%)", f"{min(atingimento, 1.0) * 100:.2f}%")
+# Linha 1: Faturamento, Lucro, Margem, Atingimento, Unidades
+c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
+with c1:
+    st.metric(
+        "Faturamento bruto realizado (R$)",
+        f"{fat_bruto_kpi:,.2f}",
+        help="Com comissão global por faturamento, mostra o faturamento mensal previsto (manual ou automático).",
+    )
+with c2:
+    st.metric("Lucro realizado (R$)", f"{lucro_sum:,.2f}")
+with c3:
+    st.metric("Margem realizada (%)", f"{margem_realizada * 100:.2f}%")
+with c4:
+    atingimento = (contrib_sum / fixed_costs) if fixed_costs > 0 else 0.0
+    st.metric("Atingimento do BE (%)", f"{min(atingimento, 1.0) * 100:.2f}%")
+with c5:
+    st.metric("Unidades vendidas", f"{unid_vendidas_sum:,.0f}")
 
-k8, k9 = st.columns(2)
-k8.metric(
-    "Unid. adicionais p/ BE (mix efetivo)",
-    f"{(0 if faltante_RS == 0 else faltam_unidades_efetivo):,.2f}",
-)
-k9.metric(
-    "Unid. adicionais p/ BE (mix planejado)",
-    f"{(0 if faltante_RS == 0 else faltam_unidades_planejado):,.2f}",
-)
+# Linha 2: Contribuição, Comissão total paga, Faltante p/ BE, Unid. BE efetivo, Unid. BE planejado
+d1, d2, d3, d4, d5 = st.columns([1, 1, 1, 1, 1])
+with d1:
+    st.metric("Contribuição gerada (R$)", f"{contrib_sum:,.2f}")
+with d2:
+    st.metric("Comissão total paga (R$)", f"{comissao_sum:,.2f}")
+with d3:
+    faltante_RS = max(fixed_costs - contrib_sum, 0.0)
+    st.metric("Faltante p/ BE (R$)", f"{faltante_RS:,.2f}")
+with d4:
+    st.metric(
+        "Unid. adicionais p/ BE (mix efetivo)",
+        f"{(0 if faltante_RS == 0 else faltam_unidades_efetivo):,.2f}",
+    )
+with d5:
+    st.metric(
+        "Unid. adicionais p/ BE (mix planejado)",
+        f"{(0 if faltante_RS == 0 else faltam_unidades_planejado):,.2f}",
+    )
+
+# (opcional) taxa da comissão por faixa
+if use_revenue_tiers:
+    st.metric("Taxa de comissão efetiva", f"{(final_rate or 0) * 100:.2f}%")
 
 # (opcional) exibir a taxa efetiva no corpo principal
 if use_revenue_tiers:
