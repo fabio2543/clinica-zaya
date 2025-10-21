@@ -321,7 +321,9 @@ with colL:
                 bom_manual["qtd"], errors="coerce"
             ).fillna(0.0) * pd.to_numeric(
                 bom_manual["custo_unit"], errors="coerce"
-            ).fillna(0.0)
+            ).fillna(
+                0.0
+            )
             bom_items = bom_manual.to_dict("records")
             bom_cost_from_products = float(bom_manual["subtotal"].sum())
     else:
@@ -366,7 +368,9 @@ with colL:
                     bom_manual["qtd"], errors="coerce"
                 ).fillna(0.0) * pd.to_numeric(
                     bom_manual["custo_unit"], errors="coerce"
-                ).fillna(0.0)
+                ).fillna(
+                    0.0
+                )
                 bom_items = bom_manual.to_dict("records")
                 bom_cost_from_products = float(bom_manual["subtotal"].sum())
         else:

@@ -282,7 +282,7 @@ st.title("🧪 Produtos (Compras/Entradas)")
 
 menu = st.radio(
     "Selecione a operação",
-    ["Visualizar", "Cadastro", "Atualização", "Exclusão"],
+    ["Visualizar", "Cadastro", "Atualização", "Exclusão", "Carga Massiva"],
     horizontal=True,
 )
 
@@ -480,3 +480,81 @@ elif menu == "Exclusão":
             except Exception as e:
                 st.error("Erro ao excluir o produto.")
                 st.exception(e)
+# =============================================================================
+# CARGA MASSIVA
+# =============================================================================
+elif menu == "Carga Massiva":
+    st.subheader("📤 Importação em lote de produtos / insumos")
+
+    st.info(
+        "Envie um arquivo **.csv** ou **.xlsx** com as colunas: "
+        "`nome`, `categoria`, `fornecedor`, `valor_compra`, `quantidade`, `data_compra`."
+    )
+
+    uploaded_file = st.file_uploader("Selecione o arquivo", type=["csv", "xlsx"])
+
+    if uploaded_file is not None:
+        try:
+            # Detectar formato
+            if uploaded_file.name.lower().endswith(".csv"):
+                df_import = pd.read_csv(uploaded_file, sep=";", decimal=",")
+            else:
+                df_import = pd.read_excel(uploaded_file)
+
+            st.success(f"Arquivo carregado com {len(df_import)} linhas.")
+            st.dataframe(df_import.head(10), use_container_width=True)
+
+            # Colunas obrigatórias
+            required_cols = ["nome", "categoria", "valor_compra", "quantidade"]
+            missing_cols = [c for c in required_cols if c not in df_import.columns]
+
+            if missing_cols:
+                st.error(
+                    f"As seguintes colunas obrigatórias estão ausentes: {missing_cols}"
+                )
+            else:
+                # Normalizar tipos
+                df_import["valor_compra"] = pd.to_numeric(
+                    df_import["valor_compra"], errors="coerce"
+                ).fillna(0.0)
+                df_import["quantidade"] = pd.to_numeric(
+                    df_import["quantidade"], errors="coerce"
+                ).fillna(1.0)
+                df_import["fornecedor"] = df_import.get("fornecedor", "").fillna("")
+                df_import["data_compra"] = pd.to_datetime(
+                    df_import.get("data_compra", pd.Timestamp.today()), errors="coerce"
+                ).dt.date.fillna(pd.Timestamp.today().date())
+
+                if st.button(
+                    "Confirmar importação", type="primary", use_container_width=True
+                ):
+                    sucesso, falhas = 0, 0
+                    for _, row in df_import.iterrows():
+                        try:
+                            _call_create_product_purchase_adapter(
+                                nome=str(row.get("nome", "")).strip(),
+                                categoria=str(row.get("categoria", "")).strip(),
+                                fornecedor=str(row.get("fornecedor", "")).strip(),
+                                valor_compra=float(row.get("valor_compra", 0.0)),
+                                quantidade=float(row.get("quantidade", 1.0)),
+                                data_compra=row.get("data_compra"),
+                            )
+                            sucesso += 1
+                        except Exception as e:
+                            falhas += 1
+                            st.error(f"Erro ao importar linha: {row.to_dict()}")
+                            st.exception(e)
+
+                    st.toast(
+                        f"Importação concluída. {sucesso} sucesso(s), {falhas} falha(s).",
+                        icon="📦",
+                    )
+                    st.success(f"✅ {sucesso} produtos importados com sucesso.")
+                    if falhas:
+                        st.warning(
+                            f"⚠️ {falhas} registros apresentaram erro durante a importação."
+                        )
+
+        except Exception as e:
+            st.error("Erro ao processar o arquivo enviado.")
+            st.exception(e)
